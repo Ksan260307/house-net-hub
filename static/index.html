@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>おうちネット Hub</title>
+  <meta name="description" content="家庭向け総合インターネット支援アプリ — WiFi QR・プロファイル管理・パスワード診断・速度テスト・おえかき3D">
+  <link rel="stylesheet" href="static/css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%B6%3C/text%3E%3C/svg%3E">
+
+  <!-- PWA（iPad等にインストール可能） -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#7f8e74">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="おうちネット">
+  <link rel="apple-touch-icon" href="static/icons/apple-touch-icon.png">
+</head>
+<body>
+  <!-- ヘッダー -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark">📶</span>
+      <div class="brand-text">
+        <h1>おうちネット Hub</h1>
+        <p>家庭向け総合インターネット支援アプリ</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="機能">
+      <button class="tab is-active" data-tab="wifi" role="tab" aria-selected="true">📶 WiFi QR</button>
+      <button class="tab" data-tab="profiles" role="tab" aria-selected="false">📇 プロファイル</button>
+      <button class="tab" data-tab="password" role="tab" aria-selected="false">🔐 パスワード</button>
+      <button class="tab" data-tab="speed" role="tab" aria-selected="false">🚀 速度テスト</button>
+      <button class="tab" data-tab="diagnose" role="tab" aria-selected="false">🩺 診断</button>
+      <button class="tab" data-tab="usage" role="tab" aria-selected="false">🧮 データ試算</button>
+      <button class="tab" data-tab="kids" role="tab" aria-selected="false">🎨 おえかき3D</button>
+    </nav>
+  </header>
+
+  <main class="app-main">
+
+    <!-- ===================== WiFi QR ===================== -->
+    <section class="panel is-active" id="panel-wifi" role="tabpanel">
+      <div class="grid-2">
+        <div class="card">
+          <h2 class="card-title">WiFi情報を入力</h2>
+          <p class="card-sub">入力するとその場でQRコードが更新されます。</p>
+          <form id="wifi-form" autocomplete="off" novalidate>
+            <label class="field">
+              <span>ネットワーク名（SSID）<i>*</i></span>
+              <input type="text" id="ssid" name="ssid" maxlength="32" placeholder="MyHome_5G" required>
+            </label>
+            <label class="field">
+              <span>パスワード</span>
+              <div class="input-row">
+                <input type="password" id="password" name="password" maxlength="63" placeholder="パスワード">
+                <button type="button" class="btn-ghost" id="toggle-pw" aria-label="表示切替">👁</button>
+              </div>
+            </label>
+            <label class="field">
+              <span>セキュリティ種別</span>
+              <select id="security" name="security">
+                <option value="WPA">WPA / WPA2 / WPA3</option>
+                <option value="WEP">WEP（古い機器）</option>
+                <option value="nopass">パスワード無し（オープン）</option>
+              </select>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="hidden" name="hidden">
+              <span>ステルス（非公開）SSIDである</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="show-password" name="show_password">
+              <span>来客用フルスクリーンにパスワードを表示する<small>（既定：非表示）</small></span>
+            </label>
+          </form>
+          <div class="row-actions">
+            <button class="btn-primary" id="save-profile-btn" type="button">＋ プロファイルに保存</button>
+          </div>
+          <p class="error-text" id="wifi-error" hidden></p>
+        </div>
+
+        <div class="card card-qr">
+          <h2 class="card-title">接続用QRコード</h2>
+          <p class="card-sub">スマホのカメラをかざすだけで接続できます。</p>
+          <div class="qr-stage" id="qr-stage">
+            <div class="qr-placeholder" id="qr-placeholder">SSIDを入力するとQRが表示されます</div>
+          </div>
+          <div class="qr-caption" id="qr-caption" hidden>
+            <strong id="qr-ssid-label"></strong>
+          </div>
+          <div class="row-actions center">
+            <button class="btn-secondary" id="guest-mode-btn" type="button" disabled>🖥 来客用フルスクリーン</button>
+            <button class="btn-secondary" id="download-qr-btn" type="button" disabled>⬇ SVG保存</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== プロファイル ===================== -->
+    <section class="panel" id="panel-profiles" role="tabpanel">
+      <div class="card">
+        <div class="card-head-row">
+          <div>
+            <h2 class="card-title">保存済みネットワーク</h2>
+            <p class="card-sub">自宅用・来客用など、複数のネットワークを管理できます。</p>
+          </div>
+          <button class="btn-secondary" id="refresh-profiles" type="button">↻ 更新</button>
+        </div>
+        <ul class="profile-list" id="profile-list"></ul>
+        <p class="empty-note" id="profiles-empty" hidden>まだ保存されたネットワークはありません。<br>「WiFi QR」タブから追加できます。</p>
+      </div>
+    </section>
+
+    <!-- ===================== パスワード ===================== -->
+    <section class="panel" id="panel-password" role="tabpanel">
+      <div class="grid-2">
+        <div class="card">
+          <h2 class="card-title">パスワード強度診断</h2>
+          <p class="card-sub">入力したパスワードの安全性をその場で診断します（送信はローカルのみ）。</p>
+          <label class="field">
+            <span>診断するパスワード</span>
+            <div class="input-row">
+              <input type="password" id="analyze-input" placeholder="パスワードを入力">
+              <button type="button" class="btn-ghost" id="toggle-analyze" aria-label="表示切替">👁</button>
+            </div>
+          </label>
+          <div class="meter">
+            <div class="meter-bar" id="meter-bar"></div>
+          </div>
+          <div class="meter-info">
+            <span id="meter-label">—</span>
+            <span id="meter-entropy" class="muted"></span>
+          </div>
+          <ul class="feedback-list" id="feedback-list"></ul>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title">安全なパスワードを生成</h2>
+          <p class="card-sub">推測されにくいランダムなパスワードを作成します。</p>
+          <label class="field">
+            <span>長さ: <b id="len-label">16</b> 文字</span>
+            <input type="range" id="gen-length" min="8" max="40" value="16">
+          </label>
+          <div class="opt-grid">
+            <label class="check"><input type="checkbox" id="opt-upper" checked><span>大文字 A-Z</span></label>
+            <label class="check"><input type="checkbox" id="opt-lower" checked><span>小文字 a-z</span></label>
+            <label class="check"><input type="checkbox" id="opt-digits" checked><span>数字 0-9</span></label>
+            <label class="check"><input type="checkbox" id="opt-symbols" checked><span>記号 !@#</span></label>
+            <label class="check"><input type="checkbox" id="opt-ambig" checked><span>紛らわしい文字を除外</span></label>
+          </div>
+          <button class="btn-primary" id="gen-btn" type="button">🎲 生成する</button>
+          <div class="gen-result" id="gen-result" hidden>
+            <code id="gen-output"></code>
+            <button class="btn-ghost" id="copy-gen" title="コピー">📋</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 速度テスト ===================== -->
+    <section class="panel" id="panel-speed" role="tabpanel">
+      <div class="card card-center">
+        <h2 class="card-title">かんたん通信速度テスト</h2>
+        <p class="card-sub">このサーバーとの間でダウンロード速度と応答速度を測定します。</p>
+        <div class="gauge">
+          <div class="gauge-value" id="speed-value">--</div>
+          <div class="gauge-unit">Mbps</div>
+        </div>
+        <div class="speed-stats">
+          <div><span class="stat-label">応答 (ping)</span><span class="stat-val" id="ping-value">-- ms</span></div>
+          <div><span class="stat-label">受信データ</span><span class="stat-val" id="bytes-value">-- MB</span></div>
+        </div>
+        <button class="btn-primary" id="speed-btn" type="button">▶ 計測開始</button>
+        <p class="card-sub tiny" id="speed-note"></p>
+      </div>
+
+      <div class="card mt-lg" id="history-card">
+        <div class="card-head-row">
+          <div>
+            <h2 class="card-title">計測履歴</h2>
+            <p class="card-sub">過去の計測結果（暗号化して保存）。</p>
+          </div>
+          <button class="btn-secondary" id="clear-history" type="button">🗑 履歴を消去</button>
+        </div>
+        <div class="history-chart" id="history-chart"></div>
+        <p class="empty-note" id="history-empty" hidden>まだ計測履歴はありません。</p>
+      </div>
+    </section>
+
+    <!-- ===================== ネット診断 ===================== -->
+    <section class="panel" id="panel-diagnose" role="tabpanel">
+      <div class="card card-center">
+        <h2 class="card-title">かんたんネット診断</h2>
+        <p class="card-sub">質問に答えるだけで、つながらない原因と対処法をご案内します。</p>
+        <div class="diag-stage" id="diag-stage"></div>
+        <button class="btn-secondary" id="diag-restart" type="button" hidden>↻ 最初から</button>
+      </div>
+    </section>
+
+    <!-- ===================== データ試算 ===================== -->
+    <section class="panel" id="panel-usage" role="tabpanel">
+      <div class="grid-2">
+        <div class="card">
+          <h2 class="card-title">データ使用量シミュレーター</h2>
+          <p class="card-sub">1日あたりの利用時間から、月間のデータ使用量の目安を計算します。</p>
+          <div class="usage-inputs" id="usage-inputs">
+            <label class="usage-row" data-key="video_hd"><span>📺 動画（HD）</span><input type="number" min="0" max="24" step="0.5" value="2"><em>時間/日</em></label>
+            <label class="usage-row" data-key="video_4k"><span>🎬 動画（4K）</span><input type="number" min="0" max="24" step="0.5" value="0"><em>時間/日</em></label>
+            <label class="usage-row" data-key="video_call"><span>📞 ビデオ通話</span><input type="number" min="0" max="24" step="0.5" value="0.5"><em>時間/日</em></label>
+            <label class="usage-row" data-key="music"><span>🎵 音楽</span><input type="number" min="0" max="24" step="0.5" value="1"><em>時間/日</em></label>
+            <label class="usage-row" data-key="browsing"><span>🌐 Web・SNS</span><input type="number" min="0" max="24" step="0.5" value="2"><em>時間/日</em></label>
+            <label class="usage-row" data-key="gaming"><span>🎮 ゲーム</span><input type="number" min="0" max="24" step="0.5" value="0"><em>時間/日</em></label>
+          </div>
+          <label class="field mt-md">
+            <span>日数: <b id="usage-days-label">30</b> 日</span>
+            <input type="range" id="usage-days" min="1" max="31" value="30">
+          </label>
+        </div>
+        <div class="card card-center usage-result-card">
+          <h2 class="card-title">月間の目安</h2>
+          <div class="gauge">
+            <div class="gauge-value" id="usage-month">--</div>
+            <div class="gauge-unit">GB / 月</div>
+          </div>
+          <p class="card-sub">1日あたり 約 <b id="usage-day">--</b> GB</p>
+          <ul class="usage-breakdown" id="usage-breakdown"></ul>
+          <p class="card-sub tiny">※一般的な目安です。実際の使用量はサービスや設定により異なります。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== おえかき3D（子供向け） ===================== -->
+    <section class="panel" id="panel-kids" role="tabpanel">
+      <div class="kids-subtabs" role="tablist">
+        <button class="kidsub is-active" data-kidsub="draw" type="button" role="tab">🖍 おえかき</button>
+        <button class="kidsub" data-kidsub="stage" type="button" role="tab">🏖 ステージ</button>
+      </div>
+
+      <!-- おえかきサブタブ -->
+      <div class="kids-sub is-active" id="kidsub-draw">
+        <div class="card kids-draw-card">
+          <h2 class="card-title">おえかきしよう！</h2>
+          <p class="card-sub">生きものを描いて「3Dにする！」を押すと、ステージでうろうろするよ。</p>
+          <canvas id="draw-canvas" width="320" height="300" aria-label="おえかきキャンバス"></canvas>
+          <div class="palette" id="palette"></div>
+          <div class="brush-row">
+            <span>ふとさ</span>
+            <button class="brush-btn" data-size="6" type="button">S</button>
+            <button class="brush-btn is-active" data-size="12" type="button">M</button>
+            <button class="brush-btn" data-size="22" type="button">L</button>
+            <button class="brush-btn eraser" id="eraser-btn" type="button">けしゴム</button>
+          </div>
+          <div class="row-actions">
+            <button class="btn-primary" id="kids-spawn" type="button">✨ 3Dにする！</button>
+            <button class="btn-secondary" id="kids-clear-draw" type="button">おえかきを消す</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ステージサブタブ -->
+      <div class="kids-sub" id="kidsub-stage">
+        <div class="kids-stages">
+          <span class="kids-stages-label">ステージ</span>
+          <button class="stage-btn is-active" data-stage="beach" type="button">🏖 かいがん</button>
+          <button class="stage-btn" type="button" disabled>🌲 もり（じゅんびちゅう）</button>
+          <button class="stage-btn" type="button" disabled>🚀 うちゅう（じゅんびちゅう）</button>
+        </div>
+        <div class="card kids-scene-card">
+          <div class="scene-head">
+            <span class="stage-name">🏖 かいがんステージ</span>
+            <button class="btn-secondary" id="kids-clear-scene" type="button">🌊 みんなバイバイ</button>
+          </div>
+          <div class="scene-frame" id="scene-frame">
+            <canvas id="scene-canvas" width="384" height="256"></canvas>
+            <div class="scene-controls">
+              <button class="scene-ctl" id="kids-zoom-out" type="button" aria-label="縮小">－</button>
+              <span class="zoom-label" id="zoom-label">75%</span>
+              <button class="scene-ctl" id="kids-zoom-in" type="button" aria-label="拡大">＋</button>
+              <button class="scene-ctl" id="kids-fullscreen" type="button" aria-label="フルスクリーン">⛶</button>
+            </div>
+          </div>
+          <div class="kids-actions" id="kids-actions" hidden>
+            <span class="sel-label" id="sel-label">この子：</span>
+            <button class="btn-secondary" id="kids-jump" type="button">⤴ ジャンプ</button>
+            <button class="btn-secondary" id="kids-edit" type="button">✏️ なおす</button>
+            <button class="btn-secondary danger" id="kids-delete" type="button">🗑 ばいばい</button>
+          </div>
+          <p class="card-sub tiny" id="kids-count">なかまはまだいないよ。おえかきしてね！</p>
+          <p class="card-sub tiny">タップでジャンプ／ドラッグでつかんで移動できるよ。</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <span>おうちネット Hub</span> · 家庭向け総合インターネット支援アプリ
+  </footer>
+
+  <!-- 来客用フルスクリーン表示 -->
+  <div class="guest-overlay" id="guest-overlay" hidden>
+    <button class="guest-close" id="guest-close" aria-label="閉じる">✕</button>
+    <div class="guest-inner">
+      <p class="guest-welcome">ようこそ 🌿</p>
+      <h2 class="guest-title" id="guest-ssid"></h2>
+      <div class="guest-qr" id="guest-qr"></div>
+      <p class="guest-hint">スマートフォンのカメラでQRコードを読み取ってください</p>
+      <p class="guest-pw" id="guest-pw"></p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="static/js/app.js"></script>
+  <script src="static/js/kids.js"></script>
+</body>
+</html>

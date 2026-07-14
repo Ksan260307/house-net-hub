@@ -1,0 +1,19 @@
+{
+  "name": "おうちネット Hub",
+  "short_name": "おうちネット",
+  "description": "家庭向け総合インターネット支援アプリ（WiFi QR・パスワード・速度・おえかき3D）",
+  "lang": "ja",
+  "dir": "ltr",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eae3da",
+  "theme_color": "#7f8e74",
+  "categories": ["utilities", "productivity", "kids"],
+  "icons": [
+    { "src": "static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

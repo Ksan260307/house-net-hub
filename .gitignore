@@ -1,0 +1,15 @@
+# データ（実行時に生成される暗号化データと鍵。絶対にコミットしない）
+data/*.enc
+data/.secret.key
+data/profiles.json
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

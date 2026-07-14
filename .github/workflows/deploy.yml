@@ -1,0 +1,64 @@
+name: Deploy PWA to GitHub Pages
+
+# フロントエンド（インストール可能なPWA）を GitHub Pages に公開する。
+# iPad の Safari で公開URLを開き「ホーム画面に追加」でインストールできる。
+#   Settings → Pages → Source を「GitHub Actions」に設定して有効化してください。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate app icons
+        run: |
+          python -m pip install --upgrade pip
+          pip install pillow
+          python tools/make_icons.py
+
+      - name: Assemble static PWA site
+        run: |
+          mkdir -p _site/static
+          cp static/index.html            _site/index.html
+          cp static/manifest.webmanifest  _site/manifest.webmanifest
+          cp static/sw.js                 _site/sw.js
+          cp -r static/css                _site/static/css
+          cp -r static/js                 _site/static/js
+          cp -r static/icons              _site/static/icons
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
