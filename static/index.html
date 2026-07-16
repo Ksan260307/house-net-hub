@@ -242,19 +242,53 @@
       <div class="kids-sub is-active" id="kidsub-draw">
         <div class="card kids-draw-card">
           <h2 class="card-title">おえかきしよう！</h2>
-          <p class="card-sub">生きものを描いて「3Dにする！」を押すと、ステージでうろうろするよ。</p>
-          <canvas id="draw-canvas" width="320" height="300" aria-label="おえかきキャンバス"></canvas>
+          <p class="card-sub">生きものや建物を描いて「3Dにする！」を押すと、ステージの街に加わるよ。</p>
+
+          <div class="draw-toolrow">
+            <button class="tool-btn is-active" data-tool="brush" type="button">🖌 ふで</button>
+            <button class="tool-btn" data-tool="fill" id="tool-fill" type="button">🪣 ぬる</button>
+            <button class="tool-btn" data-tool="eraser" id="eraser-btn" type="button">🧽 けす</button>
+            <span class="tool-spacer"></span>
+            <button class="tool-btn small" id="undo-btn" type="button" aria-label="もどす" disabled>↩</button>
+            <button class="tool-btn small" id="redo-btn" type="button" aria-label="すすむ" disabled>↪</button>
+          </div>
+
+          <div class="draw-stack">
+            <canvas id="guide-canvas" width="320" height="300" aria-hidden="true"></canvas>
+            <canvas id="draw-canvas" width="320" height="300" aria-label="おえかきキャンバス"></canvas>
+          </div>
+
+          <div class="guide-row">
+            <span>したがき</span>
+            <button class="guide-btn is-active" data-guide="none" type="button">なし</button>
+            <button class="guide-btn" data-guide="fish" type="button">🐟</button>
+            <button class="guide-btn" data-guide="crab" type="button">🦀</button>
+            <button class="guide-btn" data-guide="house" type="button">🏠</button>
+            <button class="guide-btn" data-guide="bird" type="button">🐦</button>
+          </div>
+
           <div class="palette" id="palette"></div>
           <div class="brush-row">
             <span>ふとさ</span>
-            <button class="brush-btn" data-size="6" type="button">S</button>
-            <button class="brush-btn is-active" data-size="12" type="button">M</button>
-            <button class="brush-btn" data-size="22" type="button">L</button>
-            <button class="brush-btn eraser" id="eraser-btn" type="button">けしゴム</button>
+            <button class="brush-btn" data-size="6" type="button" aria-label="ほそい"><i class="dot d6"></i></button>
+            <button class="brush-btn is-active" data-size="12" type="button" aria-label="ふつう"><i class="dot d12"></i></button>
+            <button class="brush-btn" data-size="22" type="button" aria-label="ふとい"><i class="dot d22"></i></button>
+            <button class="brush-btn" data-size="34" type="button" aria-label="ごくぶと"><i class="dot d34"></i></button>
+            <label class="custom-color-wrap" aria-label="すきないろ">
+              <input type="color" id="custom-color" value="#a05fc8">
+              <span>すきないろ</span>
+            </label>
           </div>
-          <div class="row-actions">
-            <button class="btn-primary" id="kids-spawn" type="button">✨ 3Dにする！</button>
-            <button class="btn-secondary" id="kids-clear-draw" type="button">おえかきを消す</button>
+
+          <div class="preview-row">
+            <div class="preview-box">
+              <canvas id="preview-canvas" width="128" height="104"></canvas>
+              <span>3Dプレビュー</span>
+            </div>
+            <div class="preview-actions">
+              <button class="btn-primary" id="kids-spawn" type="button">✨ 3Dにする！</button>
+              <button class="btn-secondary" id="kids-clear-draw" type="button">ぜんぶ消す</button>
+            </div>
           </div>
         </div>
       </div>
@@ -278,6 +312,7 @@
               <button class="scene-ctl" id="kids-zoom-out" type="button" aria-label="縮小">－</button>
               <span class="zoom-label" id="zoom-label">75%</span>
               <button class="scene-ctl" id="kids-zoom-in" type="button" aria-label="拡大">＋</button>
+              <button class="scene-ctl" id="kids-mute" type="button" aria-label="おと">🔊</button>
               <button class="scene-ctl" id="kids-fullscreen" type="button" aria-label="フルスクリーン">⛶</button>
             </div>
           </div>
@@ -288,7 +323,7 @@
             <button class="btn-secondary danger" id="kids-delete" type="button">🗑 ばいばい</button>
           </div>
           <p class="card-sub tiny" id="kids-count">なかまはまだいないよ。おえかきしてね！</p>
-          <p class="card-sub tiny">タップでジャンプ／ドラッグでつかんで移動できるよ。</p>
+          <p class="card-sub tiny">タップでジャンプ／ドラッグでつかんで移動。なにもない所をドラッグすると見る場所を動かせるよ（2本指でズームもOK）。</p>
         </div>
       </div>
     </section>

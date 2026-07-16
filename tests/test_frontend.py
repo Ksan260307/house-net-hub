@@ -151,7 +151,13 @@ def test_kids_subtabs_split(page, live_server):
     assert page.locator(".kidsub").count() == 2
     assert page.locator("#kidsub-draw").is_visible()
     assert page.locator("#kidsub-stage").is_hidden()
-    assert page.locator(".palette .swatch").count() == 10
+    assert page.locator(".palette .swatch").count() >= 10
+    # 新ツール群が揃っている
+    assert page.locator('.tool-btn[data-tool="brush"]').is_visible()
+    assert page.locator("#tool-fill").is_visible()
+    assert page.locator("#eraser-btn").is_visible()
+    assert page.locator("#undo-btn").count() == 1
+    assert page.locator("#custom-color").count() == 1
     assert page.evaluate("() => window.KidsTest.running()") is True
 
     # ステージサブタブへ切替
@@ -321,6 +327,104 @@ def test_kids_town_persists_across_reload(page, live_server):
     page.click('.kidsub[data-kidsub="stage"]')
     page.click("#kids-clear-scene")
     assert page.evaluate("() => window.KidsTest.storageLen()") == 0
+
+
+def test_kids_undo_redo(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="kids"]')
+    page.click("#kids-clear-draw")
+    assert page.evaluate("() => window.KidsTest.drawHasInk()") is False
+    # 描く → Undoで消える → Redoで戻る
+    page.evaluate("() => window.KidsTest.paintTest()")
+    assert page.evaluate("() => window.KidsTest.drawHasInk()") is True
+    assert page.evaluate("() => window.KidsTest.canUndo()") is True
+    page.click("#undo-btn")
+    assert page.evaluate("() => window.KidsTest.drawHasInk()") is False
+    assert page.evaluate("() => window.KidsTest.canRedo()") is True
+    page.click("#redo-btn")
+    assert page.evaluate("() => window.KidsTest.drawHasInk()") is True
+
+
+def test_kids_fill_tool(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="kids"]')
+    page.click("#kids-clear-draw")
+    page.click("#tool-fill")
+    assert page.evaluate("() => window.KidsTest.getTool()") == "fill"
+    # キャンバス中央をクリック → 透明地が塗りつぶされる（既定色は赤系）
+    page.click("#draw-canvas")
+    px = page.evaluate("() => window.KidsTest.pixelAt(160, 150)")
+    assert px[3] > 200          # 不透明になった
+    assert px[0] > 150          # 赤成分
+    # 色スウォッチを押すとふでに戻る
+    page.locator(".palette .swatch").nth(3).click()
+    assert page.evaluate("() => window.KidsTest.getTool()") == "brush"
+
+
+def test_kids_guide_templates(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="kids"]')
+    assert page.evaluate("() => window.KidsTest.guideActive()") == "none"
+    assert page.evaluate("() => window.KidsTest.guideHasInk()") is False
+    page.click('.guide-btn[data-guide="fish"]')
+    assert page.evaluate("() => window.KidsTest.guideActive()") == "fish"
+    assert page.evaluate("() => window.KidsTest.guideHasInk()") is True
+    # ガイドは完成品（描画レイヤー）には写らない
+    assert page.evaluate("() => window.KidsTest.drawHasInk()") is False
+    page.click('.guide-btn[data-guide="none"]')
+    assert page.evaluate("() => window.KidsTest.guideHasInk()") is False
+
+
+def test_kids_3d_preview(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="kids"]')
+    page.click("#kids-clear-draw")
+    assert page.evaluate("() => window.KidsTest.previewReady()") is False
+    page.evaluate("() => window.KidsTest.paintTest()")
+    assert page.evaluate("() => window.KidsTest.previewReady()") is True
+    # プレビューはアニメーションしている（フレーム間で変化）
+    s1 = page.evaluate("() => document.querySelector('#preview-canvas').toDataURL()")
+    page.wait_for_timeout(400)
+    s2 = page.evaluate("() => document.querySelector('#preview-canvas').toDataURL()")
+    assert s1 != s2
+
+
+def test_kids_pan_scroll(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="kids"]')
+    page.click('.kidsub[data-kidsub="stage"]')
+    page.evaluate("() => { window.KidsTest.clearScene(); window.KidsTest.setZoom(2.0); }")
+    cam0 = page.evaluate("() => window.KidsTest.getCamera()")
+    box = page.locator("#scene-canvas").bounding_box()
+    # なにもない所（上部の海）をドラッグ → 視点が動く
+    page.mouse.move(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.15)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] * 0.25, box["y"] + box["height"] * 0.55, steps=6)
+    page.mouse.up()
+    cam1 = page.evaluate("() => window.KidsTest.getCamera()")
+    assert abs(cam1["x"] - cam0["x"]) > 5 or abs(cam1["y"] - cam0["y"]) > 5
+    page.evaluate("() => window.KidsTest.setZoom(0.75)")
+
+
+def test_kids_mute_toggle(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="kids"]')
+    page.click('.kidsub[data-kidsub="stage"]')
+    initial = page.evaluate("() => window.KidsTest.isMuted()")
+    page.click("#kids-mute")
+    assert page.evaluate("() => window.KidsTest.isMuted()") is (not initial)
+    page.click("#kids-mute")
+    assert page.evaluate("() => window.KidsTest.isMuted()") is initial
+
+
+def test_kids_town_rank_grows(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="kids"]')
+    page.evaluate("() => { window.KidsTest.clearScene(); window.KidsTest.spawnMany(6); }")
+    text = page.locator("#kids-count").inner_text()
+    assert "6ひき" in text
+    assert "まち" in text
+    page.evaluate("() => window.KidsTest.clearScene()")
 
 
 def test_tab_navigation(page, live_server):

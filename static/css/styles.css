@@ -331,12 +331,78 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .btn-secondary.danger { background: #e6c3bd; color: #7a3a30; }
 .btn-secondary.danger:hover:not(:disabled) { background: #dcb0a8; }
 
-#draw-canvas {
-  width: 100%; aspect-ratio: 320 / 300; height: auto; display: block;
+/* おえかき面：ガイド（下）＋描画（上）の2層 */
+.draw-stack {
+  position: relative;
   background: #fffdf8;
   border: 2px dashed var(--line); border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+#guide-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+#draw-canvas {
+  position: relative;
+  width: 100%; aspect-ratio: 320 / 300; height: auto; display: block;
+  background: transparent;
   touch-action: none; cursor: crosshair;
 }
+
+/* ツール行（ふで／ぬる／けす／Undo/Redo） */
+.draw-toolrow { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.tool-btn {
+  border: none; cursor: pointer; font-family: inherit; font-weight: 700; font-size: .84rem;
+  background: var(--surface-2); color: var(--ink); border-radius: 10px; padding: 9px 13px;
+  transition: background .15s;
+}
+.tool-btn:hover:not(:disabled) { background: #ded2c4; }
+.tool-btn.is-active { background: var(--sage-deep); color: #fff; }
+.tool-btn.small { padding: 9px 12px; font-size: 1rem; line-height: 1; }
+.tool-btn:disabled { opacity: .35; cursor: not-allowed; }
+.tool-spacer { flex: 1; }
+
+/* したがきガイド */
+.guide-row { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; flex-wrap: wrap; }
+.guide-row > span { font-size: .78rem; color: var(--ink-soft); font-weight: 700; }
+.guide-btn {
+  border: none; cursor: pointer; font-family: inherit; font-weight: 700; font-size: .95rem;
+  background: var(--surface-2); color: var(--ink); border-radius: 9px; padding: 7px 12px;
+}
+.guide-btn.is-active { background: var(--blue); color: #fff; }
+
+/* ブラシ太さの視覚ドット */
+.brush-btn .dot { display: block; border-radius: 50%; background: currentColor; }
+.brush-btn .d6  { width: 5px;  height: 5px; }
+.brush-btn .d12 { width: 9px;  height: 9px; }
+.brush-btn .d22 { width: 14px; height: 14px; }
+.brush-btn .d34 { width: 19px; height: 19px; }
+
+/* 自由カラーピッカー */
+.custom-color-wrap {
+  display: flex; align-items: center; gap: 6px; margin-left: auto;
+  font-size: .74rem; color: var(--ink-soft); font-weight: 700; cursor: pointer;
+}
+.custom-color-wrap input[type="color"] {
+  width: 34px; height: 34px; padding: 0; border: none; border-radius: 50%;
+  background: conic-gradient(#e0483f, #f6d24a, #7ac74f, #3fa9c9, #c85fa8, #e0483f);
+  cursor: pointer; overflow: hidden;
+}
+.custom-color-wrap input[type="color"]::-webkit-color-swatch-wrapper { padding: 3px; }
+.custom-color-wrap input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+
+/* 3Dプレビュー行 */
+.preview-row { display: flex; align-items: center; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+.preview-box {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: linear-gradient(180deg, #dff0f5 0%, #efe6d2 100%);
+  border-radius: var(--radius-sm); padding: 8px 10px 6px;
+  box-shadow: var(--shadow-sm);
+}
+.preview-box canvas { display: block; image-rendering: pixelated; }
+.preview-box span { font-size: .68rem; color: var(--ink-soft); font-weight: 700; }
+.preview-actions { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 150px; }
 
 .palette { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0 10px; }
 .swatch {
@@ -351,10 +417,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .brush-row > span { font-size: .8rem; color: var(--ink-soft); font-weight: 700; }
 .brush-btn {
   border: none; cursor: pointer; font-family: inherit; font-weight: 700;
-  background: var(--surface-2); color: var(--ink); border-radius: 9px; padding: 8px 13px;
+  background: var(--surface-2); color: var(--ink); border-radius: 9px;
+  width: 40px; height: 36px;
+  display: grid; place-items: center;
 }
 .brush-btn.is-active { background: var(--sage-deep); color: #fff; }
-.brush-btn.eraser { margin-left: auto; }
 
 .kids-scene-card { display: flex; flex-direction: column; }
 .scene-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; }
