@@ -457,12 +457,19 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 /* CSSフルスクリーン（iPad等・Fullscreen API非対応でも動作） */
 .scene-frame.fs {
   position: fixed; inset: 0; z-index: 400; border-radius: 0;
-  background: #0c1c24;
+  background: linear-gradient(180deg, #10222c 0%, #0a171e 100%);
   display: flex; align-items: center; justify-content: center;
+  box-shadow: none;
 }
+/* 画面いっぱいにアスペクト比を保って拡大（384:256 = 1.5） */
 .scene-frame.fs #scene-canvas {
-  width: auto; height: auto;
-  max-width: 100%; max-height: 100%;
+  width: min(100vw, calc(100vh * 1.5));
+  height: auto;
+  max-width: 100vw; max-height: 100vh;
+}
+.scene-frame.fs .scene-controls {
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
 }
 body.kids-fs-open { overflow: hidden; }
 

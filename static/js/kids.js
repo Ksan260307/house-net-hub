@@ -53,7 +53,9 @@
   const particles = [];
   const clouds = [];
   const birds = [];
+  const boat = { x: 60, v: 5 };
   let birdTimer = 6;
+  let RES = 1;               // 描画解像度倍率（全画面時は2で高精細に）
   let stipple = [];
   let zoom = DEF_ZOOM, camX = 0, camY = 0;
   let rafId = null, lastT = 0, timeSec = 0;
@@ -427,9 +429,19 @@
     setupSceneInput();
   }
 
+  // バックバッファの解像度を切り替える（論理座標は BUF_W×BUF_H のまま）
+  function setRes(r) {
+    RES = r;
+    sceneCanvas.width = BUF_W * r;
+    sceneCanvas.height = BUF_H * r;
+    sctx.setTransform(r, 0, 0, r, 0, 0);
+    sctx.imageSmoothingEnabled = false;
+  }
+
   function toggleFullscreen() {
     const on = sceneFrame.classList.toggle("fs");
     document.body.classList.toggle("kids-fs-open", on);
+    setRes(on ? 2 : 1);      // 全画面は高精細バッファで描く
     try {
       let p;
       if (on && sceneFrame.requestFullscreen) p = sceneFrame.requestFullscreen();
@@ -730,6 +742,8 @@
       c.x += c.v * dt;
       if (c.x > BUF_W + 70) c.x = -70;
     }
+    boat.x += boat.v * dt;
+    if (boat.x > BUF_W + 40) boat.x = -40;
     birdTimer -= dt;
     if (birdTimer <= 0) {
       birds.push({ x: -18, y: rand(6, 26), v: rand(22, 38), f: rand(6, 10) });
@@ -749,6 +763,20 @@
       sctx.ellipse(c.x + 14 * c.s, c.y + 8, 13 * c.s, 6 * c.s, 0, 0, Math.PI * 2);
       sctx.fill();
     }
+    // 水平線をゆくヨット
+    const bx = boat.x, by = 36 + Math.sin(timeSec * 1.6) * 1.2;
+    sctx.fillStyle = "#8a5a3c";
+    sctx.beginPath();
+    sctx.moveTo(bx - 9, by); sctx.lineTo(bx + 9, by);
+    sctx.lineTo(bx + 5, by + 4); sctx.lineTo(bx - 5, by + 4);
+    sctx.closePath(); sctx.fill();
+    sctx.strokeStyle = "#6b4a33"; sctx.lineWidth = 1.2;
+    sctx.beginPath(); sctx.moveTo(bx, by); sctx.lineTo(bx, by - 13); sctx.stroke();
+    sctx.fillStyle = "#fbf3e6";
+    sctx.beginPath();
+    sctx.moveTo(bx + 1, by - 13); sctx.lineTo(bx + 9, by - 4); sctx.lineTo(bx + 1, by - 3);
+    sctx.closePath(); sctx.fill();
+
     sctx.strokeStyle = "rgba(60,60,70,0.7)";
     sctx.lineWidth = 1.4;
     for (const b of birds) {
@@ -771,21 +799,74 @@
   }
 
   function drawGround() {
+    // 海と空
     sctx.fillStyle = seaGrad; sctx.fillRect(0, 0, BUF_W, BUF_H);
     sctx.fillStyle = skyGrad; sctx.fillRect(0, 0, BUF_W, SKY_Y);
+    // 太陽（やわらかいグロー付き）
+    const glow = sctx.createRadialGradient(BUF_W - 40, 16, 4, BUF_W - 40, 16, 30);
+    glow.addColorStop(0, "rgba(251,231,166,0.85)");
+    glow.addColorStop(1, "rgba(251,231,166,0)");
+    sctx.fillStyle = glow;
+    sctx.fillRect(BUF_W - 74, 0, 68, 50);
     sctx.fillStyle = "#fbe7a6";
     sctx.beginPath(); sctx.arc(BUF_W - 40, 16, 12, 0, Math.PI * 2); sctx.fill();
     renderSky();
 
+    // 海のきらめき（島より奥に描く）
+    sctx.strokeStyle = "rgba(255,255,255,0.28)";
+    sctx.lineWidth = 1;
+    for (let k = 0; k < 3; k++) {
+      const yy = SKY_Y + 7 + k * 7;
+      sctx.beginPath();
+      for (let x = 0; x <= BUF_W; x += 10) {
+        const yo = Math.sin(x * 0.11 + timeSec * 1.8 + k * 2.1) * 1.2;
+        x === 0 ? sctx.moveTo(x, yy + yo) : sctx.lineTo(x, yy + yo);
+      }
+      sctx.stroke();
+    }
+
     const T = iso(0, 0), R = iso(WORLD_W, 0), B = iso(WORLD_W, WORLD_D), L = iso(0, WORLD_D);
     const th = SLAB_H * zoom;
+
+    // 島が海に落とす影（接地感）
+    fillPoly([
+      { x: L.x - 6, y: L.y + th + 3 }, { x: B.x, y: B.y + th + 7 },
+      { x: R.x + 6, y: R.y + th + 3 }, { x: B.x, y: B.y + th + 1 },
+    ], "rgba(10,40,55,0.25)");
+
+    // スラブ側面（厚み）＋地層のライン
     fillPoly([L, B, { x: B.x, y: B.y + th }, { x: L.x, y: L.y + th }], "#c8a86a");
     fillPoly([B, R, { x: R.x, y: R.y + th }, { x: B.x, y: B.y + th }], "#b7975a");
+    sctx.strokeStyle = "rgba(90,70,40,0.18)";
+    sctx.lineWidth = 1;
+    for (const f of [0.4, 0.75]) {
+      sctx.beginPath();
+      sctx.moveTo(L.x, L.y + th * f); sctx.lineTo(B.x, B.y + th * f); sctx.lineTo(R.x, R.y + th * f);
+      sctx.stroke();
+    }
+
+    // 砂の上面
     const g = sctx.createLinearGradient(0, T.y, 0, B.y);
     g.addColorStop(0, "#f3e6c2"); g.addColorStop(1, "#e6cf94");
     fillPoly([T, R, B, L], g);
 
-    sctx.strokeStyle = "rgba(190,165,110,0.35)";
+    // チェッカー模様（うっすら市松でタイル感）
+    for (let i = 0; i < WORLD_W; i++) {
+      for (let j = 0; j < WORLD_D; j++) {
+        if ((i + j) % 2 === 0) continue;
+        fillPoly([iso(i, j), iso(i + 1, j), iso(i + 1, j + 1), iso(i, j + 1)],
+          "rgba(166,138,92,0.07)");
+      }
+    }
+
+    // 波打ち際の濡れた砂（海側の2辺の内側に帯）
+    fillPoly([iso(0, 0), iso(WORLD_W, 0), iso(WORLD_W, 0.65), iso(0, 0.65)],
+      "rgba(172,142,96,0.28)");
+    fillPoly([iso(0, 0), iso(0, WORLD_D), iso(0.65, WORLD_D), iso(0.65, 0)],
+      "rgba(172,142,96,0.28)");
+
+    // タイル格子（ごく薄く）
+    sctx.strokeStyle = "rgba(190,165,110,0.16)";
     sctx.lineWidth = 1;
     for (let i = 0; i <= WORLD_W; i++) {
       const a = iso(i, 0), b = iso(i, WORLD_D);
@@ -795,6 +876,8 @@
       const a = iso(0, j), b = iso(WORLD_W, j);
       sctx.beginPath(); sctx.moveTo(a.x, a.y); sctx.lineTo(b.x, b.y); sctx.stroke();
     }
+
+    // 砂のスティップル
     for (const s of stipple) {
       const p = iso(s.wx, s.wz);
       sctx.fillStyle = s.c;
@@ -803,6 +886,7 @@
   }
 
   function drawShoreFoam() {
+    // 島の上辺（海に面した2辺）の泡
     sctx.strokeStyle = "rgba(255,255,255,0.7)";
     sctx.lineWidth = 2;
     for (const edge of [[iso(0, 0), iso(WORLD_W, 0)], [iso(0, 0), iso(0, WORLD_D)]]) {
@@ -814,31 +898,63 @@
       }
       sctx.stroke();
     }
+    // スラブの根元（水面との境目）に打ち寄せる泡
+    const th = SLAB_H * zoom;
+    const Lb = iso(0, WORLD_D), Bb = iso(WORLD_W, WORLD_D), Rb = iso(WORLD_W, 0);
+    sctx.strokeStyle = "rgba(255,255,255,0.45)";
+    sctx.lineWidth = 2;
+    for (const edge of [[Lb, Bb], [Bb, Rb]]) {
+      sctx.beginPath();
+      for (let t = 0; t <= 1.001; t += 0.05) {
+        const x = lerp(edge[0].x, edge[1].x, t);
+        const y = lerp(edge[0].y, edge[1].y, t) + th + Math.sin(t * 24 - timeSec * 3) * 1.2;
+        t === 0 ? sctx.moveTo(x, y) : sctx.lineTo(x, y);
+      }
+      sctx.stroke();
+    }
   }
 
   // ---- 小物 ------------------------------------------------------------
   function drawProp(pr) {
     const { x: sx, y: sy } = iso(pr.bx, pr.by);
     const z = zoom;
+    // 接地影（小物共通）
+    const propShadow = (rw) => {
+      sctx.fillStyle = "rgba(40,30,10,0.18)";
+      sctx.beginPath();
+      sctx.ellipse(sx, sy, rw * z, rw * 0.38 * z, 0, 0, Math.PI * 2);
+      sctx.fill();
+    };
     switch (pr.kind) {
       case "palm": {
+        propShadow(11);
         const h = 42 * z;
+        const sway = Math.sin(timeSec * 1.3 + pr.bx * 2) * 2.2 * z;  // そよ風で揺れる
+        const topX = sx - 3 * z + sway, topY = sy - h;
         sctx.strokeStyle = "#9c6b3f"; sctx.lineWidth = Math.max(2, 5 * z);
         sctx.beginPath(); sctx.moveTo(sx, sy);
-        sctx.quadraticCurveTo(sx - 6 * z, sy - h * 0.6, sx - 3 * z, sy - h); sctx.stroke();
+        sctx.quadraticCurveTo(sx - 6 * z, sy - h * 0.6, topX, topY); sctx.stroke();
         sctx.fillStyle = "#4f9d54";
         for (let a = 0; a < 6; a++) {
-          const ang = (Math.PI * 2 / 6) * a + 0.3;
+          const ang = (Math.PI * 2 / 6) * a + 0.3 + sway * 0.01;
           sctx.beginPath();
-          sctx.ellipse(sx - 3 * z + Math.cos(ang) * 12 * z, sy - h + Math.sin(ang) * 7 * z,
+          sctx.ellipse(topX + Math.cos(ang) * 12 * z, topY + Math.sin(ang) * 7 * z,
             13 * z, 5 * z, ang, 0, Math.PI * 2);
           sctx.fill();
         }
+        sctx.fillStyle = "#7a4e2d";                      // ヤシの実
+        sctx.beginPath();
+        sctx.arc(topX - 3 * z, topY + 3 * z, 2.6 * z, 0, Math.PI * 2);
+        sctx.arc(topX + 3 * z, topY + 4 * z, 2.2 * z, 0, Math.PI * 2);
+        sctx.fill();
         break;
       }
       case "rock": {
+        propShadow(12);
         sctx.fillStyle = "#9a958c";
         sctx.beginPath(); sctx.ellipse(sx, sy - 5 * z, 12 * z, 9 * z, 0, 0, Math.PI * 2); sctx.fill();
+        sctx.fillStyle = "#b3aea4";                      // ハイライト
+        sctx.beginPath(); sctx.ellipse(sx - 3 * z, sy - 9 * z, 5 * z, 3.2 * z, -0.4, 0, Math.PI * 2); sctx.fill();
         break;
       }
       case "star": {
@@ -851,6 +967,66 @@
           i ? sctx.lineTo(x, y) : sctx.moveTo(x, y);
         }
         sctx.closePath(); sctx.fill();
+        break;
+      }
+      case "castle": {                                   // 砂のお城
+        propShadow(15);
+        sctx.fillStyle = "#dcbe82";
+        sctx.beginPath();
+        sctx.moveTo(sx - 14 * z, sy); sctx.lineTo(sx - 10 * z, sy - 13 * z);
+        sctx.lineTo(sx + 10 * z, sy - 13 * z); sctx.lineTo(sx + 14 * z, sy);
+        sctx.closePath(); sctx.fill();
+        sctx.fillStyle = "#d2b273";
+        sctx.beginPath();
+        sctx.moveTo(sx - 7 * z, sy - 13 * z); sctx.lineTo(sx - 5 * z, sy - 23 * z);
+        sctx.lineTo(sx + 5 * z, sy - 23 * z); sctx.lineTo(sx + 7 * z, sy - 13 * z);
+        sctx.closePath(); sctx.fill();
+        sctx.fillStyle = "#c4a262";                      // 城のギザギザ
+        for (const ox of [-5, -1.4, 2.2]) {
+          sctx.fillRect(sx + ox * z, sy - 25.5 * z, 2.6 * z, 2.8 * z);
+        }
+        sctx.strokeStyle = "#8a6a3c"; sctx.lineWidth = Math.max(1, 1.2 * z);
+        sctx.beginPath(); sctx.moveTo(sx, sy - 25 * z); sctx.lineTo(sx, sy - 32 * z); sctx.stroke();
+        sctx.fillStyle = "#e0483f";                      // 旗
+        sctx.beginPath();
+        sctx.moveTo(sx, sy - 32 * z); sctx.lineTo(sx + 6 * z, sy - 29.5 * z); sctx.lineTo(sx, sy - 27 * z);
+        sctx.closePath(); sctx.fill();
+        sctx.fillStyle = "#8a6a3c";                      // 入口
+        sctx.beginPath();
+        sctx.arc(sx, sy - 1 * z, 3.4 * z, Math.PI, 0);
+        sctx.closePath(); sctx.fill();
+        break;
+      }
+      case "grass": {                                    // 草のふさ
+        sctx.strokeStyle = "#6fa25e"; sctx.lineWidth = Math.max(1, 1.6 * z);
+        const sw = Math.sin(timeSec * 2 + pr.by * 3) * 1.2 * z;
+        for (const o of [-3, -1, 1, 3]) {
+          sctx.beginPath();
+          sctx.moveTo(sx + o * z, sy);
+          sctx.quadraticCurveTo(sx + o * 1.6 * z + sw, sy - 5 * z, sx + o * 2.1 * z + sw, sy - 9 * z);
+          sctx.stroke();
+        }
+        break;
+      }
+      case "shell": {                                    // 貝がら
+        sctx.fillStyle = "#f3d9d0";
+        sctx.beginPath(); sctx.ellipse(sx, sy - 1.6 * z, 4.4 * z, 3.4 * z, 0.4, 0, Math.PI * 2); sctx.fill();
+        sctx.strokeStyle = "#d8b2a4"; sctx.lineWidth = Math.max(0.8, z);
+        sctx.beginPath(); sctx.arc(sx - z, sy - 2 * z, 2 * z, 0.4, Math.PI * 1.4); sctx.stroke();
+        break;
+      }
+      case "flower": {                                   // はまべの花
+        sctx.strokeStyle = "#6fa25e"; sctx.lineWidth = Math.max(1, 1.4 * z);
+        sctx.beginPath(); sctx.moveTo(sx, sy); sctx.lineTo(sx, sy - 7 * z); sctx.stroke();
+        sctx.fillStyle = "#f4a9b8";
+        for (let a = 0; a < 5; a++) {
+          const ang = (Math.PI * 2 / 5) * a - Math.PI / 2;
+          sctx.beginPath();
+          sctx.arc(sx + Math.cos(ang) * 3 * z, sy - 9 * z + Math.sin(ang) * 3 * z, 2 * z, 0, Math.PI * 2);
+          sctx.fill();
+        }
+        sctx.fillStyle = "#f6d24a";
+        sctx.beginPath(); sctx.arc(sx, sy - 9 * z, 1.8 * z, 0, Math.PI * 2); sctx.fill();
         break;
       }
     }
@@ -1169,17 +1345,42 @@
     props.push({ kind: "palm", bx: WORLD_W - 2.0, by: 1.5 });
     props.push({ kind: "rock", bx: 1.7, by: WORLD_D - 1.6 });
     props.push({ kind: "star", bx: WORLD_W / 2, by: WORLD_D - 1.0 });
+    props.push({ kind: "castle", bx: 5.5, by: 11.2 });
+    props.push({ kind: "grass", bx: 3.2, by: 4.5 });
+    props.push({ kind: "grass", bx: 22.5, by: 6.5 });
+    props.push({ kind: "grass", bx: 12.5, by: 2.2 });
+    props.push({ kind: "shell", bx: 8.5, by: 8.8 });
+    props.push({ kind: "shell", bx: 18.2, by: 11.5 });
+    props.push({ kind: "flower", bx: 2.2, by: 8.2 });
+    props.push({ kind: "flower", bx: 23.8, by: 9.8 });
 
     setupDrawing();
     buildPalette();
     bindControls();
     initSky();
+    setRes(1);
     setZoom(DEF_ZOOM);
     setMuted(muted);
     drawGuide("none");
     updateUndoButtons();
     updatePreview();
     loadTown();
+
+    // ネイティブ全画面がEscなどで解除されたらCSS側も同期する
+    document.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement && sceneFrame.classList.contains("fs")) {
+        sceneFrame.classList.remove("fs");
+        document.body.classList.remove("kids-fs-open");
+        setRes(1);
+      }
+    });
+    // CSSフルスクリーン時（ネイティブ非対応環境）は Esc で閉じる
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !document.fullscreenElement &&
+          sceneFrame.classList.contains("fs")) {
+        toggleFullscreen();
+      }
+    });
 
     lastT = performance.now();
     rafId = requestAnimationFrame(loop);

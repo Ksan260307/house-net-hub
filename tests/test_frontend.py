@@ -310,6 +310,26 @@ def test_kids_fullscreen_toggle(page, live_server):
     assert page.evaluate("() => window.KidsTest.isFullscreen()") is False
 
 
+def test_kids_fullscreen_enlarges_canvas(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="kids"]')
+    page.click('.kidsub[data-kidsub="stage"]')
+    box0 = page.locator("#scene-canvas").bounding_box()
+    attr0 = page.evaluate("() => document.querySelector('#scene-canvas').width")
+    page.click("#kids-fullscreen")
+    # 表示サイズが画面いっぱいに拡大される（元サイズのままにならない）
+    box1 = page.locator("#scene-canvas").bounding_box()
+    assert box1["width"] > box0["width"] * 1.2
+    # 高精細バッファ（2倍解像度）に切り替わる
+    attr1 = page.evaluate("() => document.querySelector('#scene-canvas').width")
+    assert attr1 == attr0 * 2
+    # 戻すと元に戻る
+    page.click("#kids-fullscreen")
+    assert page.evaluate("() => document.querySelector('#scene-canvas').width") == attr0
+    box2 = page.locator("#scene-canvas").bounding_box()
+    assert abs(box2["width"] - box0["width"]) < 4
+
+
 def test_kids_town_persists_across_reload(page, live_server):
     page.goto(live_server)
     page.click('.tab[data-tab="kids"]')
