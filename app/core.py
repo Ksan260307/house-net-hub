@@ -274,6 +274,32 @@ def generate_password(
 
 
 # ---------------------------------------------------------------------------
+# 覚えやすいパスフレーズ生成（ことばフレーズ）
+# ---------------------------------------------------------------------------
+# 日本語ローマ字の平易な単語。家族に口頭で伝えやすいものを選定。
+PASSPHRASE_WORDS = (
+    "sakura", "yama", "umi", "sora", "hoshi", "tsuki", "kaze", "mori",
+    "kawa", "yuki", "hana", "tori", "neko", "inu", "kumo", "niji",
+    "hikari", "midori", "aoi", "akane", "matsu", "take", "ume", "momo",
+    "suzume", "koto", "fuji", "nami", "shio", "kai", "asahi", "yume",
+)
+
+
+def generate_passphrase(words: int = 3, separator: str = "-") -> str:
+    """
+    「ことば」を並べた覚えやすいパスフレーズを生成する。
+    例: "sakura-228-yama-tori"（単語N個＋3桁数字1つをランダム位置に挿入）
+    """
+    words = int(words)
+    if words < 2 or words > 6:
+        raise ValueError("words は 2〜6 で指定してください")
+    parts = [secrets.choice(PASSPHRASE_WORDS) for _ in range(words)]
+    number = str(secrets.randbelow(900) + 100)          # 100〜999
+    parts.insert(secrets.randbelow(len(parts) + 1), number)
+    return separator.join(parts)
+
+
+# ---------------------------------------------------------------------------
 # バリデーション
 # ---------------------------------------------------------------------------
 def validate_profile(data: dict) -> dict:

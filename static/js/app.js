@@ -60,6 +60,7 @@
 
   // ---- WiFi QR ------------------------------------------------------
   let lastQR = { svg: "", payload: "", ssid: "", password: "", security: "WPA" };
+  let editingProfile = null;   // 編集中のプロファイル（null=新規）
 
   function currentWifiInput() {
     return {
@@ -68,7 +69,13 @@
       security: $("#security").value,
       hidden: $("#hidden").checked,
       show_password: $("#show-password").checked,
+      is_guest: $("#is-guest").checked,
     };
+  }
+
+  function setQRButtons(enabled) {
+    ["guest-mode-btn", "download-qr-btn", "download-png-btn", "print-qr-btn"]
+      .forEach((id) => { $("#" + id).disabled = !enabled; });
   }
 
   const updateQR = debounce(async function () {
@@ -80,8 +87,7 @@
       $("#qr-stage").innerHTML =
         '<div class="qr-placeholder" id="qr-placeholder">SSIDを入力するとQRが表示されます</div>';
       $("#qr-caption").hidden = true;
-      $("#guest-mode-btn").disabled = true;
-      $("#download-qr-btn").disabled = true;
+      setQRButtons(false);
       return;
     }
     try {
@@ -94,8 +100,7 @@
       $("#qr-stage").innerHTML = result.svg;
       $("#qr-ssid-label").textContent = input.ssid;
       $("#qr-caption").hidden = false;
-      $("#guest-mode-btn").disabled = false;
-      $("#download-qr-btn").disabled = false;
+      setQRButtons(true);
     } catch (e) {
       errEl.textContent = e.message;
       errEl.hidden = false;
@@ -124,25 +129,39 @@
         toast("SSIDを入力してください");
         return;
       }
+      const payload = {
+        name: input.ssid,
+        ssid: input.ssid,
+        password: input.password,
+        security: input.security,
+        hidden: input.hidden,
+        show_password: input.show_password,
+        is_guest: input.is_guest,
+      };
       try {
-        await api("api/profiles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: input.ssid,
-            ssid: input.ssid,
-            password: input.password,
-            security: input.security,
-            hidden: input.hidden,
-            show_password: input.show_password,
-          }),
-        });
-        toast("プロファイルに保存しました");
+        if (editingProfile) {
+          await api("api/profiles/" + editingProfile.id, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          toast("プロファイルを更新しました");
+          cancelEdit();
+        } else {
+          await api("api/profiles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          toast("プロファイルに保存しました");
+        }
         loadProfiles();
       } catch (e) {
         toast(e.message);
       }
     });
+
+    $("#edit-cancel-btn").addEventListener("click", cancelEdit);
 
     $("#download-qr-btn").addEventListener("click", () => {
       if (!lastQR.svg) return;
@@ -155,7 +174,68 @@
       URL.revokeObjectURL(url);
     });
 
+    // PNG保存（SVG→canvas経由。印刷や共有に便利）
+    // CSPの img-src は 'self' と data: のみ許可のため、data: URLで読み込む
+    $("#download-png-btn").addEventListener("click", () => {
+      if (!lastQR.svg) return;
+      const svgStr = lastQR.svg.replace("<svg", '<svg width="512" height="512"');
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = 512; c.height = 512;
+        c.getContext("2d").drawImage(img, 0, 0, 512, 512);
+        c.toBlob((b) => {
+          if (!b) { toast("PNGを作成できませんでした"); return; }
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(b);
+          a.download = (lastQR.ssid || "wifi") + "-qr.png";
+          a.click();
+          URL.revokeObjectURL(a.href);
+        }, "image/png");
+      };
+      img.onerror = () => toast("PNGを作成できませんでした");
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+    });
+
+    // 来客用の紙カードを印刷
+    $("#print-qr-btn").addEventListener("click", () => {
+      if (!lastQR.svg) return;
+      $("#print-qr").innerHTML = lastQR.svg;
+      $("#print-ssid").textContent = lastQR.ssid;
+      const pw = $("#print-pass");
+      if (lastQR.show_password && lastQR.security !== "nopass" && lastQR.password) {
+        pw.textContent = "パスワード: " + lastQR.password;
+        pw.hidden = false;
+      } else {
+        pw.hidden = true;
+      }
+      window.print();
+    });
+
     $("#guest-mode-btn").addEventListener("click", () => openGuest(lastQR));
+  }
+
+  // ---- プロファイル編集モード ----------------------------------------
+  function startEdit(p) {
+    editingProfile = p;
+    $("#ssid").value = p.ssid;
+    $("#password").value = p.password || "";
+    $("#security").value = p.security;
+    $("#hidden").checked = !!p.hidden;
+    $("#show-password").checked = !!p.show_password;
+    $("#is-guest").checked = !!p.is_guest;
+    $("#edit-banner-text").textContent = "「" + p.name + "」を編集中";
+    $("#edit-banner").hidden = false;
+    $("#save-profile-btn").textContent = "💾 更新する";
+    const wifiTab = $('.tab[data-tab="wifi"]');
+    if (wifiTab) wifiTab.click();
+    updateQR();
+  }
+
+  function cancelEdit() {
+    editingProfile = null;
+    $("#edit-banner").hidden = true;
+    $("#save-profile-btn").textContent = "＋ プロファイルに保存";
   }
 
   // ---- 来客用フルスクリーン ----------------------------------------
@@ -235,6 +315,12 @@
     showBtn.textContent = "🖥";
     showBtn.addEventListener("click", () => showProfileGuest(p));
 
+    const editBtn = document.createElement("button");
+    editBtn.className = "btn-ghost";
+    editBtn.title = "編集";
+    editBtn.textContent = "✏️";
+    editBtn.addEventListener("click", () => startEdit(p));
+
     const delBtn = document.createElement("button");
     delBtn.className = "btn-ghost";
     delBtn.title = "削除";
@@ -242,6 +328,7 @@
     delBtn.addEventListener("click", () => deleteProfile(p));
 
     actions.appendChild(showBtn);
+    actions.appendChild(editBtn);
     actions.appendChild(delBtn);
 
     li.appendChild(badge);
@@ -272,6 +359,7 @@
     if (!confirm("「" + p.name + "」を削除しますか？")) return;
     try {
       await api("api/profiles/" + p.id, { method: "DELETE" });
+      if (editingProfile && editingProfile.id === p.id) cancelEdit();
       toast("削除しました");
       loadProfiles();
     } catch (e) {
@@ -281,6 +369,46 @@
 
   function initProfiles() {
     $("#refresh-profiles").addEventListener("click", loadProfiles);
+
+    // バックアップ書き出し（JSONファイル）
+    $("#export-profiles").addEventListener("click", async () => {
+      try {
+        const items = await api("api/profiles");
+        if (!items.length) { toast("書き出すプロファイルがありません"); return; }
+        const data = { app: "ouchi-net-hub", version: 1, profiles: items };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "ouchi-net-profiles.json";
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast("書き出しました（パスワードを含むので保管に注意）");
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+
+    // バックアップ読み込み
+    $("#import-profiles").addEventListener("click", () => $("#import-file").click());
+    $("#import-file").addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";                     // 同じファイルを再選択できるように
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const profiles = Array.isArray(data) ? data : data.profiles;
+        const r = await api("api/profiles/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profiles: profiles }),
+        });
+        toast(r.imported + "件のプロファイルを読み込みました");
+        loadProfiles();
+      } catch (err) {
+        toast("読み込めませんでした: " + err.message);
+      }
+    });
   }
 
   // ---- パスワード ---------------------------------------------------
@@ -326,15 +454,31 @@
       $("#len-label").textContent = lenInput.value;
     });
 
-    $("#gen-btn").addEventListener("click", async () => {
-      const params = new URLSearchParams({
-        length: $("#gen-length").value,
-        upper: $("#opt-upper").checked,
-        lower: $("#opt-lower").checked,
-        digits: $("#opt-digits").checked,
-        symbols: $("#opt-symbols").checked,
-        avoid_ambiguous: $("#opt-ambig").checked,
+    // 生成モード切替（ランダム / ことばフレーズ）
+    const currentMode = () =>
+      (document.querySelector('input[name="gen-mode"]:checked') || {}).value || "random";
+    $$('input[name="gen-mode"]').forEach((r) => {
+      r.addEventListener("change", () => {
+        const phrase = currentMode() === "phrase";
+        $("#random-opts").hidden = phrase;
+        $("#phrase-opts").hidden = !phrase;
       });
+    });
+
+    $("#gen-btn").addEventListener("click", async () => {
+      let params;
+      if (currentMode() === "phrase") {
+        params = new URLSearchParams({ mode: "phrase", words: $("#phrase-words").value });
+      } else {
+        params = new URLSearchParams({
+          length: $("#gen-length").value,
+          upper: $("#opt-upper").checked,
+          lower: $("#opt-lower").checked,
+          digits: $("#opt-digits").checked,
+          symbols: $("#opt-symbols").checked,
+          avoid_ambiguous: $("#opt-ambig").checked,
+        });
+      }
       try {
         const r = await api("api/password/generate?" + params.toString());
         $("#gen-output").textContent = r.password;
@@ -357,14 +501,17 @@
   }
 
   // ---- 速度テスト ---------------------------------------------------
-  async function measurePing(rounds = 4) {
-    let total = 0;
+  async function measurePing(rounds = 5) {
+    const times = [];
     for (let i = 0; i < rounds; i++) {
       const t0 = performance.now();
       await fetch("api/speedtest/ping?_=" + Date.now(), { cache: "no-store" });
-      total += performance.now() - t0;
+      times.push(performance.now() - t0);
     }
-    return total / rounds;
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    // ジッター＝各計測の平均からのぶれの平均
+    const jitter = times.reduce((a, b) => a + Math.abs(b - avg), 0) / times.length;
+    return { avg, jitter };
   }
 
   async function measureDownload(bytes) {
@@ -379,6 +526,24 @@
     return { mbps, bytes: buf.byteLength, seconds };
   }
 
+  // 上り計測: サーバーの受信上限(256KB)未満のチャンクを連続POSTする
+  async function measureUpload(chunkBytes, count) {
+    const chunk = new Uint8Array(chunkBytes);
+    for (let i = 0; i < chunk.length; i += 65536) {
+      crypto.getRandomValues(chunk.subarray(i, Math.min(i + 65536, chunk.length)));
+    }
+    const t0 = performance.now();
+    for (let i = 0; i < count; i++) {
+      await fetch("api/speedtest/upload?_=" + Date.now(), {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: chunk,
+      });
+    }
+    const seconds = (performance.now() - t0) / 1000;
+    return (chunkBytes * count * 8) / seconds / 1e6;
+  }
+
   function initSpeed() {
     $("#speed-btn").addEventListener("click", async () => {
       const btn = $("#speed-btn");
@@ -389,13 +554,16 @@
       $("#speed-note").textContent = "計測中です。しばらくお待ちください…";
       try {
         const ping = await measurePing();
-        $("#ping-value").textContent = ping.toFixed(0) + " ms";
+        $("#ping-value").textContent = ping.avg.toFixed(0) + " ms";
+        $("#jitter-value").textContent = ping.jitter.toFixed(1) + " ms";
 
-        // ウォームアップ後、本計測（2MB）
+        // ウォームアップ後、下り本計測（4MB）→ 上り計測（200KB×5）
         await measureDownload(200000);
         const r = await measureDownload(4000000);
+        const upMbps = await measureUpload(200000, 5);
 
         valEl.textContent = r.mbps.toFixed(1);
+        $("#upload-value").textContent = upMbps.toFixed(1) + " Mbps";
         $("#bytes-value").textContent = (r.bytes / 1e6).toFixed(1) + " MB";
         $("#speed-note").textContent =
           "※このサーバー（ローカル）との実効速度です。回線速度とは異なる場合があります。";
@@ -405,7 +573,7 @@
           await api("api/speedtest/history", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mbps: r.mbps, ping_ms: ping }),
+            body: JSON.stringify({ mbps: r.mbps, ping_ms: ping.avg, up_mbps: upMbps }),
           });
           loadHistory();
         } catch (_) { /* 履歴保存失敗は致命的でない */ }
@@ -438,7 +606,11 @@
         const bar = document.createElement("div");
         bar.className = "hist-bar";
         bar.style.height = Math.max(6, (r.mbps / max) * 100) + "%";
-        bar.title = r.mbps.toFixed(1) + " Mbps / " + r.ping_ms.toFixed(0) + " ms";
+        const when = new Date(r.at * 1000).toLocaleString("ja-JP",
+          { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        bar.title = "↓" + r.mbps.toFixed(1) + " Mbps" +
+          (r.up_mbps != null ? " / ↑" + r.up_mbps.toFixed(1) + " Mbps" : "") +
+          " / ping " + r.ping_ms.toFixed(0) + " ms\n" + when;
         const val = document.createElement("span");
         val.className = "hist-val";
         val.textContent = r.mbps.toFixed(0);
@@ -471,6 +643,7 @@
         { label: "Wi-Fiに接続できない", next: "no_connect" },
         { label: "接続できるが遅い・不安定", next: "slow" },
         { label: "特定の機器だけつながらない", next: "one_device" },
+        { label: "特定のサイトやアプリだけ見られない", solution: "sol_site" },
       ],
     },
     no_connect: {
@@ -507,6 +680,8 @@
       steps: ["端末でこのネットワークを一度「削除／忘れる」", "本アプリのQRコードで再接続します", "OSを最新に更新します", "改善しなければ端末を再起動します"] },
     sol_airplane: { solution: true, title: "機内モードをオフにしましょう",
       steps: ["端末の機内モードをオフにします", "Wi-Fiをオンにします", "SSIDを選んで接続します", "それでも不可ならパスワードを再確認"] },
+    sol_site: { solution: true, title: "サイト・アプリ側を確認しましょう",
+      steps: ["別のブラウザやシークレットモードで開いてみます", "サービス側の障害情報（公式SNSなど）を確認します", "端末を再起動してDNSキャッシュをリフレッシュします", "改善しなければ時間をおいて再度アクセスを"] },
   };
 
   function renderDiag(nodeKey) {
@@ -594,8 +769,46 @@
     calcUsage();
   }
 
+  // ---- テーマ（ダークモード） ----------------------------------------
+  const THEME_KEY = "ouchi.theme";
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    const btn = $("#theme-toggle");
+    if (btn) btn.textContent = theme === "dark" ? "☀️" : "🌙";
+  }
+
+  function initTheme() {
+    let theme = null;
+    try { theme = localStorage.getItem(THEME_KEY); } catch (e) { /* noop */ }
+    if (!theme) {
+      theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark" : "light";
+    }
+    applyTheme(theme);
+    $("#theme-toggle").addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      applyTheme(next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* noop */ }
+    });
+  }
+
+  // ---- オンライン状態表示 ----------------------------------------------
+  function initNetStatus() {
+    const update = () => {
+      const on = navigator.onLine;
+      $("#net-status").classList.toggle("online", on);
+      $("#net-label").textContent = on ? "オンライン" : "オフライン";
+    };
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    update();
+  }
+
   // ---- 初期化 -------------------------------------------------------
   document.addEventListener("DOMContentLoaded", () => {
+    initTheme();
+    initNetStatus();
     initTabs();
     initWifi();
     initGuest();

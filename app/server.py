@@ -136,6 +136,24 @@ def create_app(data_dir: str | None = None, cipher: Cipher | None = None) -> Fla
             return jsonify({"error": "見つかりません"}), 404
         return jsonify({"deleted": pid})
 
+    @app.post("/api/profiles/import")
+    def import_profiles():
+        # バックアップJSONからの一括読み込み。全件検証してから追加する。
+        data = request.get_json(silent=True) or {}
+        items = data.get("profiles")
+        if not isinstance(items, list) or not items:
+            return jsonify({"error": "profiles の配列を指定してください"}), 400
+        if len(items) > 50:
+            return jsonify({"error": "一度に読み込めるのは50件までです"}), 400
+        cleaned = []
+        for idx, item in enumerate(items):
+            try:
+                cleaned.append(core.validate_profile(item))
+            except ValueError as e:
+                return jsonify({"error": f"{idx + 1}件目: {e}"}), 400
+        added = [profiles.add(c) for c in cleaned]
+        return jsonify({"imported": len(added)}), 201
+
     # -- パスワード ----------------------------------------------------
     @app.post("/api/password/analyze")
     def analyze_password():
@@ -151,15 +169,20 @@ def create_app(data_dir: str | None = None, cipher: Cipher | None = None) -> Fla
             return v.lower() in ("1", "true", "yes", "on")
 
         try:
-            length = int(request.args.get("length", 16))
-            pw = core.generate_password(
-                length,
-                use_upper=flag("upper", True),
-                use_lower=flag("lower", True),
-                use_digits=flag("digits", True),
-                use_symbols=flag("symbols", True),
-                avoid_ambiguous=flag("avoid_ambiguous", True),
-            )
+            if request.args.get("mode", "random") == "phrase":
+                # 覚えやすい「ことばフレーズ」モード
+                words = int(request.args.get("words", 3))
+                pw = core.generate_passphrase(words)
+            else:
+                length = int(request.args.get("length", 16))
+                pw = core.generate_password(
+                    length,
+                    use_upper=flag("upper", True),
+                    use_lower=flag("lower", True),
+                    use_digits=flag("digits", True),
+                    use_symbols=flag("symbols", True),
+                    avoid_ambiguous=flag("avoid_ambiguous", True),
+                )
         except (ValueError, TypeError) as e:
             return jsonify({"error": str(e)}), 400
         return jsonify({"password": pw, "strength": core.password_strength(pw)})
@@ -182,6 +205,12 @@ def create_app(data_dir: str | None = None, cipher: Cipher | None = None) -> Fla
             mimetype="application/octet-stream",
             headers={"Cache-Control": "no-store", "Content-Length": str(size)},
         )
+
+    @app.post("/api/speedtest/upload")
+    def speed_upload():
+        # アップロード速度計測用。受信バイト数を返すだけ（本体は破棄）。
+        data = request.get_data()
+        return jsonify({"received": len(data)})
 
     # -- 速度テスト履歴（暗号化保存） ---------------------------------
     @app.get("/api/speedtest/history")

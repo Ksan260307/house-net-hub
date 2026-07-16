@@ -26,6 +26,10 @@
         <h1>おうちネット Hub</h1>
         <p>家庭向け総合インターネット支援アプリ</p>
       </div>
+      <div class="header-tools">
+        <span class="net-status" id="net-status"><i class="net-dot" id="net-dot"></i><span id="net-label">オンライン</span></span>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="テーマ切替">🌙</button>
+      </div>
     </div>
     <nav class="tabs" role="tablist" aria-label="機能">
       <button class="tab is-active" data-tab="wifi" role="tab" aria-selected="true">📶 WiFi QR</button>
@@ -74,7 +78,15 @@
               <input type="checkbox" id="show-password" name="show_password">
               <span>来客用フルスクリーンにパスワードを表示する<small>（既定：非表示）</small></span>
             </label>
+            <label class="check">
+              <input type="checkbox" id="is-guest" name="is_guest">
+              <span>来客用ネットワークとしてマーク</span>
+            </label>
           </form>
+          <div class="edit-banner" id="edit-banner" hidden>
+            <span id="edit-banner-text">編集中</span>
+            <button class="btn-ghost" id="edit-cancel-btn" type="button">やめる</button>
+          </div>
           <div class="row-actions">
             <button class="btn-primary" id="save-profile-btn" type="button">＋ プロファイルに保存</button>
           </div>
@@ -92,7 +104,9 @@
           </div>
           <div class="row-actions center">
             <button class="btn-secondary" id="guest-mode-btn" type="button" disabled>🖥 来客用フルスクリーン</button>
+            <button class="btn-secondary" id="download-png-btn" type="button" disabled>⬇ PNG保存</button>
             <button class="btn-secondary" id="download-qr-btn" type="button" disabled>⬇ SVG保存</button>
+            <button class="btn-secondary" id="print-qr-btn" type="button" disabled>🖨 カード印刷</button>
           </div>
         </div>
       </div>
@@ -106,7 +120,12 @@
             <h2 class="card-title">保存済みネットワーク</h2>
             <p class="card-sub">自宅用・来客用など、複数のネットワークを管理できます。</p>
           </div>
-          <button class="btn-secondary" id="refresh-profiles" type="button">↻ 更新</button>
+          <div class="row-actions compact">
+            <button class="btn-secondary" id="export-profiles" type="button">⬇ 書き出し</button>
+            <button class="btn-secondary" id="import-profiles" type="button">⬆ 読み込み</button>
+            <input type="file" id="import-file" accept="application/json,.json" hidden>
+            <button class="btn-secondary" id="refresh-profiles" type="button">↻ 更新</button>
+          </div>
         </div>
         <ul class="profile-list" id="profile-list"></ul>
         <p class="empty-note" id="profiles-empty" hidden>まだ保存されたネットワークはありません。<br>「WiFi QR」タブから追加できます。</p>
@@ -138,19 +157,36 @@
 
         <div class="card">
           <h2 class="card-title">安全なパスワードを生成</h2>
-          <p class="card-sub">推測されにくいランダムなパスワードを作成します。</p>
-          <label class="field">
-            <span>長さ: <b id="len-label">16</b> 文字</span>
-            <input type="range" id="gen-length" min="8" max="40" value="16">
-          </label>
-          <div class="opt-grid">
-            <label class="check"><input type="checkbox" id="opt-upper" checked><span>大文字 A-Z</span></label>
-            <label class="check"><input type="checkbox" id="opt-lower" checked><span>小文字 a-z</span></label>
-            <label class="check"><input type="checkbox" id="opt-digits" checked><span>数字 0-9</span></label>
-            <label class="check"><input type="checkbox" id="opt-symbols" checked><span>記号 !@#</span></label>
-            <label class="check"><input type="checkbox" id="opt-ambig" checked><span>紛らわしい文字を除外</span></label>
+          <p class="card-sub">推測されにくいパスワードを作成します。「ことばフレーズ」は口頭でも伝えやすい形式です。</p>
+          <div class="mode-row">
+            <label class="check"><input type="radio" name="gen-mode" value="random" checked><span>🎲 ランダム</span></label>
+            <label class="check"><input type="radio" name="gen-mode" value="phrase"><span>🗣 ことばフレーズ</span></label>
           </div>
-          <button class="btn-primary" id="gen-btn" type="button">🎲 生成する</button>
+          <div id="random-opts">
+            <label class="field">
+              <span>長さ: <b id="len-label">16</b> 文字</span>
+              <input type="range" id="gen-length" min="8" max="40" value="16">
+            </label>
+            <div class="opt-grid">
+              <label class="check"><input type="checkbox" id="opt-upper" checked><span>大文字 A-Z</span></label>
+              <label class="check"><input type="checkbox" id="opt-lower" checked><span>小文字 a-z</span></label>
+              <label class="check"><input type="checkbox" id="opt-digits" checked><span>数字 0-9</span></label>
+              <label class="check"><input type="checkbox" id="opt-symbols" checked><span>記号 !@#</span></label>
+              <label class="check"><input type="checkbox" id="opt-ambig" checked><span>紛らわしい文字を除外</span></label>
+            </div>
+          </div>
+          <div id="phrase-opts" hidden>
+            <label class="field">
+              <span>ことばの数</span>
+              <select id="phrase-words">
+                <option value="2">2つ（みじかめ）</option>
+                <option value="3" selected>3つ（おすすめ）</option>
+                <option value="4">4つ（しっかり）</option>
+              </select>
+            </label>
+            <p class="card-sub tiny">例: sakura-228-yama-tori のような、覚えやすい形式で生成します。</p>
+          </div>
+          <button class="btn-primary" id="gen-btn" type="button">✨ 生成する</button>
           <div class="gen-result" id="gen-result" hidden>
             <code id="gen-output"></code>
             <button class="btn-ghost" id="copy-gen" title="コピー">📋</button>
@@ -170,6 +206,8 @@
         </div>
         <div class="speed-stats">
           <div><span class="stat-label">応答 (ping)</span><span class="stat-val" id="ping-value">-- ms</span></div>
+          <div><span class="stat-label">ジッター</span><span class="stat-val" id="jitter-value">-- ms</span></div>
+          <div><span class="stat-label">送信 (上り)</span><span class="stat-val" id="upload-value">-- Mbps</span></div>
           <div><span class="stat-label">受信データ</span><span class="stat-val" id="bytes-value">-- MB</span></div>
         </div>
         <button class="btn-primary" id="speed-btn" type="button">▶ 計測開始</button>
@@ -344,6 +382,16 @@
       <p class="guest-hint">スマートフォンのカメラでQRコードを読み取ってください</p>
       <p class="guest-pw" id="guest-pw"></p>
     </div>
+  </div>
+
+  <!-- 印刷用WiFiカード（画面上はオフスクリーン、印刷時のみ表示） -->
+  <div class="print-card" id="print-card" aria-hidden="true">
+    <p class="print-title">Wi-Fi にせつぞく 🌿</p>
+    <div class="print-qr" id="print-qr"></div>
+    <p class="print-ssid" id="print-ssid"></p>
+    <p class="print-pass" id="print-pass" hidden></p>
+    <p class="print-hint">スマートフォンのカメラでQRコードを読み取ってください</p>
+    <p class="print-brand">おうちネット Hub</p>
   </div>
 
   <div class="toast" id="toast" hidden></div>

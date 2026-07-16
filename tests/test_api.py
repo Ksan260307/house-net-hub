@@ -135,6 +135,19 @@ def test_password_generate_flags(client):
     assert r.get_json()["password"].isdigit()
 
 
+def test_password_generate_phrase_mode(client):
+    r = client.get("/api/password/generate?mode=phrase&words=3")
+    assert r.status_code == 200
+    pw = r.get_json()["password"]
+    assert pw.count("-") == 3               # 単語3 + 数字1 = 区切り3つ
+    assert r.get_json()["strength"]["score"] >= 2
+
+
+def test_password_generate_phrase_invalid_words(client):
+    r = client.get("/api/password/generate?mode=phrase&words=99")
+    assert r.status_code == 400
+
+
 # ---- 速度テスト ------------------------------------------------------
 def test_speedtest_ping(client):
     r = client.get("/api/speedtest/ping")
@@ -152,6 +165,43 @@ def test_speedtest_payload_size(client):
 def test_speedtest_payload_capped(client):
     r = client.get("/api/speedtest/payload?bytes=999999999")
     assert len(r.data) == 25_000_000  # 上限にクランプ
+
+
+# ---- アップロード速度計測 --------------------------------------------
+def test_speedtest_upload(client):
+    r = client.post("/api/speedtest/upload", data=b"x" * 50000,
+                    content_type="application/octet-stream")
+    assert r.status_code == 200
+    assert r.get_json()["received"] == 50000
+
+
+# ---- プロファイル一括インポート ---------------------------------------
+def test_profiles_import(client):
+    r = client.post("/api/profiles/import", json={"profiles": [
+        {"ssid": "ImpA", "password": "pw12345"},
+        {"ssid": "ImpB", "password": "pw12345", "is_guest": True},
+    ]})
+    assert r.status_code == 201
+    assert r.get_json()["imported"] == 2
+    items = client.get("/api/profiles").get_json()
+    assert len(items) == 2
+    assert any(i["is_guest"] for i in items)
+
+
+def test_profiles_import_invalid_entry(client):
+    r = client.post("/api/profiles/import", json={"profiles": [
+        {"ssid": "OK", "password": "pw12345"},
+        {"password": "no-ssid"},
+    ]})
+    assert r.status_code == 400
+    assert "2件目" in r.get_json()["error"]
+    # 全件検証してから追加するので、1件目も追加されていない
+    assert client.get("/api/profiles").get_json() == []
+
+
+def test_profiles_import_empty(client):
+    assert client.post("/api/profiles/import", json={"profiles": []}).status_code == 400
+    assert client.post("/api/profiles/import", json={}).status_code == 400
 
 
 # ---- 速度テスト履歴 --------------------------------------------------
@@ -172,6 +222,17 @@ def test_history_crud(client):
 def test_history_invalid(client):
     r = client.post("/api/speedtest/history", json={"mbps": "x", "ping_ms": 1})
     assert r.status_code == 400
+
+
+def test_history_accepts_upload_speed(client):
+    r = client.post("/api/speedtest/history",
+                    json={"mbps": 80.1, "ping_ms": 9.5, "up_mbps": 42.5})
+    assert r.status_code == 201
+    assert r.get_json()["up_mbps"] == 42.5
+    # 旧形式（up_mbpsなし）も引き続き受け付ける
+    r2 = client.post("/api/speedtest/history", json={"mbps": 50, "ping_ms": 10})
+    assert r2.status_code == 201
+    assert "up_mbps" not in r2.get_json()
 
 
 # ---- プロファイル show_password ------------------------------------

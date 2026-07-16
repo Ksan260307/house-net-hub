@@ -1,5 +1,7 @@
 """フロントエンド E2E テスト（Playwright + Chromium）。実ブラウザで全機能を検証する。"""
 
+import json
+
 import pytest
 
 pytestmark = pytest.mark.frontend
@@ -11,6 +13,23 @@ def test_page_loads(page, live_server):
     assert page.locator(".brand-text h1").inner_text() == "おうちネット Hub"
 
 
+def test_online_indicator(page, live_server):
+    page.goto(live_server)
+    assert page.locator("#net-status").is_visible()
+    assert page.locator("#net-label").inner_text() == "オンライン"
+
+
+def test_dark_mode_toggle_persists(page, live_server):
+    page.goto(live_server)
+    initial = page.evaluate("() => document.documentElement.dataset.theme || 'light'")
+    page.click("#theme-toggle")
+    after = page.evaluate("() => document.documentElement.dataset.theme")
+    assert after != initial
+    # リロードしても選択が保持される
+    page.reload()
+    assert page.evaluate("() => document.documentElement.dataset.theme") == after
+
+
 def test_wifi_qr_generates(page, live_server):
     page.goto(live_server)
     page.fill("#ssid", "MyHome_5G")
@@ -20,6 +39,19 @@ def test_wifi_qr_generates(page, live_server):
     assert page.locator("#qr-stage svg").count() == 1
     assert page.locator("#qr-ssid-label").inner_text() == "MyHome_5G"
     assert page.is_enabled("#guest-mode-btn")
+    assert page.is_enabled("#download-png-btn")
+    assert page.is_enabled("#print-qr-btn")
+
+
+def test_qr_png_download(page, live_server):
+    page.goto(live_server)
+    page.fill("#ssid", "PngNet")
+    page.fill("#password", "pw1234567")
+    page.wait_for_selector("#qr-stage svg.qr-svg", timeout=5000)
+    with page.expect_download() as dl:
+        page.click("#download-png-btn")
+    assert dl.value.suggested_filename.endswith(".png")
+    assert "PngNet" in dl.value.suggested_filename
 
 
 def test_guest_fullscreen_hides_password_by_default(page, live_server):
@@ -65,6 +97,76 @@ def test_save_and_list_profile(page, live_server):
     assert any(unique in n for n in names)
 
 
+def test_profile_edit_flow(page, live_server):
+    page.goto(live_server)
+    unique = "EditMe_" + str(id(page))[-5:]
+    page.fill("#ssid", unique)
+    page.fill("#password", "pw12345678")
+    page.click("#save-profile-btn")
+    page.wait_for_selector("#toast.show", timeout=3000)
+
+    # プロファイルタブ → ✏️編集
+    page.click('.tab[data-tab="profiles"]')
+    page.wait_for_selector(".profile-item", timeout=3000)
+    row = page.locator(".profile-item", has_text=unique).first
+    row.locator('button[title="編集"]').click()
+
+    # WiFiタブに切り替わり、フォームへ読み込み＆編集中バナー
+    assert page.locator("#panel-wifi").is_visible()
+    assert page.input_value("#ssid") == unique
+    assert page.locator("#edit-banner").is_visible()
+    assert "更新" in page.locator("#save-profile-btn").inner_text()
+
+    # 変更して更新 → 一覧に反映
+    edited = unique + "X"
+    page.fill("#ssid", edited)
+    page.check("#is-guest")
+    page.click("#save-profile-btn")
+    page.wait_for_selector("#edit-banner[hidden]", state="attached", timeout=3000)
+    page.click('.tab[data-tab="profiles"]')
+    page.wait_for_selector(".profile-item", timeout=3000)
+    names = page.locator(".profile-name").all_inner_texts()
+    assert any(edited in n for n in names)
+    # 来客用タグも付与されている
+    tagged = page.locator(".profile-item", has_text=edited).first
+    assert tagged.locator(".profile-tag").count() == 1
+
+    # 「やめる」で編集モードを解除できる
+    tagged.locator('button[title="編集"]').click()
+    assert page.locator("#edit-banner").is_visible()
+    page.click("#edit-cancel-btn")
+    assert page.locator("#edit-banner").is_hidden()
+    assert "保存" in page.locator("#save-profile-btn").inner_text()
+
+
+def test_profiles_export_download(page, live_server):
+    page.goto(live_server)
+    unique = "Export_" + str(id(page))[-5:]
+    page.fill("#ssid", unique)
+    page.fill("#password", "pw12345678")
+    page.click("#save-profile-btn")
+    page.wait_for_selector("#toast.show", timeout=3000)
+    page.click('.tab[data-tab="profiles"]')
+    with page.expect_download() as dl:
+        page.click("#export-profiles")
+    assert dl.value.suggested_filename.endswith(".json")
+
+
+def test_profiles_import_ui(page, live_server, tmp_path):
+    f = tmp_path / "import.json"
+    f.write_text(json.dumps({
+        "app": "ouchi-net-hub", "version": 1,
+        "profiles": [{"ssid": "ImportedNet", "password": "pw1234567"}],
+    }), encoding="utf-8")
+    page.goto(live_server)
+    page.click('.tab[data-tab="profiles"]')
+    page.set_input_files("#import-file", str(f))
+    page.wait_for_selector("#toast.show", timeout=3000)
+    page.wait_for_selector(".profile-item", timeout=3000)
+    names = page.locator(".profile-name").all_inner_texts()
+    assert any("ImportedNet" in n for n in names)
+
+
 def test_password_strength_meter(page, live_server):
     page.goto(live_server)
     page.click('.tab[data-tab="password"]')
@@ -105,9 +207,38 @@ def test_speed_test_runs_and_records_history(page, live_server):
     val = page.locator("#speed-value").inner_text()
     assert float(val) > 0
     assert "ms" in page.locator("#ping-value").inner_text()
+    # ジッター・上り速度も計測される
+    assert "ms" in page.locator("#jitter-value").inner_text()
+    assert "--" not in page.locator("#jitter-value").inner_text()
+    up = page.locator("#upload-value").inner_text()
+    assert "Mbps" in up and "--" not in up
     # 履歴バーが1本以上表示される（暗号化保存された結果の描画）
     page.wait_for_selector(".hist-bar", timeout=5000)
     assert page.locator(".hist-bar").count() >= 1
+
+
+def test_passphrase_mode(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="password"]')
+    page.check('input[name="gen-mode"][value="phrase"]')
+    # ランダム用オプションが隠れ、フレーズ用が出る
+    assert page.locator("#random-opts").is_hidden()
+    assert page.locator("#phrase-opts").is_visible()
+    page.click("#gen-btn")
+    page.wait_for_selector("#gen-result:not([hidden])", timeout=3000)
+    out = page.locator("#gen-output").inner_text()
+    assert out.count("-") == 3          # 単語3つ＋数字1つ
+    # ランダムに戻すと元のUI
+    page.check('input[name="gen-mode"][value="random"]')
+    assert page.locator("#random-opts").is_visible()
+
+
+def test_diagnose_site_branch(page, live_server):
+    page.goto(live_server)
+    page.click('.tab[data-tab="diagnose"]')
+    page.get_by_role("button", name="特定のサイトやアプリだけ見られない").click()
+    page.wait_for_selector(".diag-solution", timeout=3000)
+    assert "サイト" in page.locator(".diag-solution h3").inner_text()
 
 
 def test_diagnose_wizard(page, live_server):

@@ -29,6 +29,33 @@
   --font: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", system-ui, -apple-system, sans-serif;
 }
 
+/* ---------------- ダークモード（くすみダーク） ---------------- */
+:root[data-theme="dark"] {
+  --bg:        #26221f;
+  --surface:   #322d28;
+  --surface-2: #3e3730;
+  --line:      #4a423a;
+  --ink:       #e9e1d5;
+  --ink-soft:  #a89b8c;
+  --sage:      #8ba07e;
+  --rose:      #b18a82;
+  --blue:      #7f96a3;
+  --terra:     #c29276;
+  --shadow:    0 8px 30px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+:root[data-theme="dark"] .card { border-color: rgba(255, 255, 255, 0.06); }
+:root[data-theme="dark"] input:focus,
+:root[data-theme="dark"] select:focus { background: #2b2723; }
+:root[data-theme="dark"] .toast { color: #2a2521; }
+:root[data-theme="dark"] .profile-badge { background: #4a423a; }
+:root[data-theme="dark"] .btn-secondary:hover:not(:disabled),
+:root[data-theme="dark"] .btn-ghost:hover,
+:root[data-theme="dark"] .tool-btn:hover:not(:disabled):not(.is-active),
+:root[data-theme="dark"] .scene-ctl:hover { background: #4a423a; }
+:root[data-theme="dark"] .scene-controls { background: rgba(50, 45, 40, 0.85); }
+:root[data-theme="dark"] .preview-box { background: linear-gradient(180deg, #3a4a52 0%, #4a4237 100%); }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* hidden属性は display 指定より優先させる（display:grid/flex に負けないように） */
@@ -67,6 +94,25 @@ body {
 }
 .brand-text h1 { font-size: 1.5rem; letter-spacing: .02em; font-weight: 700; }
 .brand-text p { color: var(--ink-soft); font-size: .82rem; letter-spacing: .04em; }
+
+/* ヘッダー右側（オンライン状態＋テーマ切替） */
+.header-tools { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.net-status {
+  display: flex; align-items: center; gap: 7px;
+  font-size: .78rem; font-weight: 700; color: var(--ink-soft);
+  background: var(--surface); padding: 8px 14px; border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+}
+.net-dot { width: 9px; height: 9px; border-radius: 50%; background: #b06a5c; }
+.net-status.online .net-dot { background: var(--sage-deep); }
+.theme-toggle {
+  border: none; cursor: pointer; font-size: 1.05rem;
+  width: 42px; height: 42px; border-radius: 50%;
+  background: var(--surface); box-shadow: var(--shadow-sm);
+  display: grid; place-items: center;
+  transition: transform .15s;
+}
+.theme-toggle:hover { transform: scale(1.08); }
 
 .tabs {
   display: flex; gap: 6px; flex-wrap: wrap;
@@ -176,6 +222,20 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 
 .row-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
 .row-actions.center { justify-content: center; }
+.row-actions.compact { margin-top: 0; gap: 6px; }
+.row-actions.compact .btn-secondary { padding: 8px 12px; font-size: .82rem; }
+
+/* プロファイル編集中バナー */
+.edit-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 14px; padding: 10px 14px;
+  background: var(--surface-2); border-left: 4px solid var(--gold);
+  border-radius: var(--radius-sm);
+  font-size: .85rem; font-weight: 700;
+}
+
+/* 生成モード切替 */
+.mode-row { display: flex; gap: 18px; margin-bottom: 14px; }
 
 .error-text { color: #a4574a; font-size: .82rem; margin-top: 12px; }
 
@@ -249,7 +309,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .gauge { margin: 22px auto 8px; display: flex; align-items: baseline; justify-content: center; gap: 8px; }
 .gauge-value { font-size: 3.6rem; font-weight: 800; color: var(--sage-deep); line-height: 1; font-variant-numeric: tabular-nums; }
 .gauge-unit { font-size: 1rem; color: var(--ink-soft); font-weight: 600; }
-.speed-stats { display: flex; justify-content: center; gap: 34px; margin: 18px 0 22px; }
+.speed-stats { display: flex; justify-content: center; gap: 22px; margin: 18px 0 22px; flex-wrap: wrap; }
 .speed-stats .stat-label { display: block; font-size: .74rem; color: var(--ink-soft); }
 .speed-stats .stat-val { display: block; font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .speed-value--running { animation: pulse 1s ease infinite; }
@@ -518,3 +578,26 @@ body.kids-fs-open { overflow: hidden; }
   max-width: 1080px; margin: 0 auto;
 }
 .app-footer span { font-weight: 700; color: var(--ink); }
+
+/* ---------------- 印刷用WiFiカード ---------------- */
+/* 画面上はオフスクリーンに置き、印刷時のみカードだけを表示する */
+.print-card {
+  position: absolute; left: -9999px; top: 0;
+  width: 400px; text-align: center;
+}
+@media print {
+  .app-header, .app-main, .app-footer, .toast, .guest-overlay { display: none !important; }
+  .print-card {
+    position: static; left: auto;
+    width: auto; max-width: 420px; margin: 40px auto;
+    padding: 36px 30px;
+    border: 2px dashed #b9ab99; border-radius: 20px;
+    color: #4a423b;
+  }
+  .print-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 20px; }
+  .print-qr .qr-svg { width: 280px; height: 280px; margin: 0 auto; display: block; }
+  .print-ssid { font-size: 1.25rem; font-weight: 700; margin-top: 18px; }
+  .print-pass { font-size: 1.05rem; margin-top: 6px; letter-spacing: .05em; }
+  .print-hint { font-size: .85rem; color: #8a7d70; margin-top: 14px; }
+  .print-brand { font-size: .7rem; color: #a89b8c; margin-top: 22px; }
+}

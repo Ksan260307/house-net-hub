@@ -128,6 +128,39 @@ def test_generate_is_random():
     assert a != b
 
 
+# ---- パスフレーズ生成 --------------------------------------------------
+def test_passphrase_structure():
+    p = core.generate_passphrase(3)
+    parts = p.split("-")
+    assert len(parts) == 4                      # 単語3 + 数字1
+    digits = [x for x in parts if x.isdigit()]
+    assert len(digits) == 1
+    assert 100 <= int(digits[0]) <= 999
+    for w in parts:
+        assert w.isdigit() or w in core.PASSPHRASE_WORDS
+
+
+def test_passphrase_word_count_varies():
+    assert len(core.generate_passphrase(2).split("-")) == 3
+    assert len(core.generate_passphrase(5).split("-")) == 6
+
+
+def test_passphrase_invalid_count():
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        core.generate_passphrase(1)
+    with _pytest.raises(ValueError):
+        core.generate_passphrase(7)
+
+
+def test_passphrase_is_random_and_strong():
+    a = core.generate_passphrase(3)
+    b = core.generate_passphrase(3)
+    assert a != b
+    # 十分な長さがあり、強度診断でも「普通」以上になる
+    assert core.password_strength(a)["score"] >= 2
+
+
 # ---- バリデーション --------------------------------------------------
 def test_validate_profile_ok():
     out = core.validate_profile({"ssid": "Home", "password": "pw12345"})

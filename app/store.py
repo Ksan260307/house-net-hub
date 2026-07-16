@@ -141,6 +141,16 @@ class SpeedHistoryStore(EncryptedListStore):
             "ping_ms": round(ping_ms, 1),
             "at": time.time(),
         }
+        # 上り速度は任意（旧クライアントとの互換のためオプション扱い）
+        up = record.get("up_mbps")
+        if up is not None:
+            try:
+                up = float(up)
+            except (TypeError, ValueError):
+                raise ValueError("up_mbps は数値で指定してください")
+            if up < 0 or up > 100000:
+                raise ValueError("up_mbps の値が不正です")
+            item["up_mbps"] = round(up, 2)
         with self._lock:
             items = self._read_all()
             items.insert(0, item)
