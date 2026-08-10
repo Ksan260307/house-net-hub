@@ -13,11 +13,122 @@
     const isJson = (res.headers.get("content-type") || "").includes("application/json");
     const body = isJson ? await res.json() : await res.text();
     if (!res.ok) {
-      const msg = (body && body.error) || "エラーが発生しました";
+      // 具体的なエラー（バリデーション等）はそのまま、それ以外は状況を明示
+      const msg = (body && body.error) || ("サーバーエラー (HTTP " + res.status + ")");
       throw new Error(msg);
     }
     return body;
   }
+
+  const JSON_HEADERS = { "Content-Type": "application/json" };
+
+  // ---- プロファイルストア（バックエンド優先・ローカル保存フォールバック） ----
+  // Flaskサーバーがあれば暗号化バックエンドを使い、無い場合（PWA/静的配信/
+  // サーバー未到達）はこの端末のブラウザ内(localStorage)に保存する。
+  const PROFILE_LS_KEY = "ouchi.profiles.v1";
+  const VALID_SECURITY = ["WPA", "WEP", "nopass"];
+  let backendAvailable = null;   // null=未判定 / true / false
+
+  async function detectBackend() {
+    try {
+      const res = await fetch("api/health", { cache: "no-store" });
+      backendAvailable = res.ok &&
+        (res.headers.get("content-type") || "").includes("application/json");
+    } catch (e) {
+      backendAvailable = false;
+    }
+    return backendAvailable;
+  }
+  async function ensureBackendKnown() {
+    if (backendAvailable === null) await detectBackend();
+    return backendAvailable;
+  }
+
+  function lsRead() {
+    try { return JSON.parse(localStorage.getItem(PROFILE_LS_KEY) || "[]"); }
+    catch (e) { return []; }
+  }
+  function lsWrite(arr) {
+    try { localStorage.setItem(PROFILE_LS_KEY, JSON.stringify(arr)); return true; }
+    catch (e) { return false; }
+  }
+  function genId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, "");
+    return "id" + Date.now().toString(16) + Math.random().toString(16).slice(2, 10);
+  }
+
+  // バックエンドの validate_profile と同等のクライアント側検証
+  function validateProfile(data) {
+    const ssid = String(data.ssid == null ? "" : data.ssid).trim();
+    const password = String(data.password == null ? "" : data.password);
+    let name = String(data.name == null ? "" : data.name).trim();
+    const security = String(data.security || "WPA").trim() || "WPA";
+    if (!ssid) throw new Error("SSID は必須です");
+    if (ssid.length > 32) throw new Error("SSID は32文字以内で入力してください");
+    if (VALID_SECURITY.indexOf(security) < 0) throw new Error("セキュリティ種別が不正です");
+    if (security !== "nopass" && !password) throw new Error("パスワードを入力してください");
+    if (password.length > 63) throw new Error("パスワードは63文字以内で入力してください");
+    if (!name) name = ssid;
+    if (name.length > 40) throw new Error("プロファイル名は40文字以内で入力してください");
+    return {
+      name: name, ssid: ssid, password: password, security: security,
+      hidden: !!data.hidden, is_guest: !!data.is_guest,
+      show_password: !!data.show_password, note: String(data.note || "").trim(),
+    };
+  }
+
+  const profileStore = {
+    async list() {
+      if (await ensureBackendKnown()) return api("api/profiles");
+      return lsRead();
+    },
+    async add(payload) {
+      if (await ensureBackendKnown()) {
+        return api("api/profiles", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(payload) });
+      }
+      const clean = validateProfile(payload);   // 先に検証（不正なら例外）
+      const now = Date.now() / 1000;
+      const item = Object.assign({ id: genId() }, clean, { created_at: now, updated_at: now });
+      const arr = lsRead(); arr.push(item);
+      if (!lsWrite(arr)) throw new Error("この端末に保存できませんでした（空き容量をご確認ください）");
+      return item;
+    },
+    async update(id, payload) {
+      if (await ensureBackendKnown()) {
+        return api("api/profiles/" + id, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(payload) });
+      }
+      const clean = validateProfile(payload);
+      const arr = lsRead();
+      const i = arr.findIndex((p) => p.id === id);
+      if (i < 0) throw new Error("見つかりません");
+      arr[i] = Object.assign(arr[i], clean, { updated_at: Date.now() / 1000 });
+      lsWrite(arr);
+      return arr[i];
+    },
+    async remove(id) {
+      if (await ensureBackendKnown()) return api("api/profiles/" + id, { method: "DELETE" });
+      lsWrite(lsRead().filter((p) => p.id !== id));
+      return { deleted: id };
+    },
+    async importMany(profiles) {
+      if (await ensureBackendKnown()) {
+        return api("api/profiles/import", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ profiles: profiles }) });
+      }
+      if (!Array.isArray(profiles) || !profiles.length) throw new Error("読み込めるプロファイルがありません");
+      if (profiles.length > 50) throw new Error("一度に読み込めるのは50件までです");
+      const now = Date.now() / 1000;
+      const cleaned = profiles.map((p, idx) => {
+        try { return validateProfile(p); }
+        catch (e) { throw new Error((idx + 1) + "件目: " + e.message); }
+      });
+      const arr = lsRead();
+      cleaned.forEach((c) => arr.push(Object.assign({ id: genId() }, c, { created_at: now, updated_at: now })));
+      lsWrite(arr);
+      return { imported: cleaned.length };
+    },
+    usingLocal() { return backendAvailable === false; },
+  };
+  window.__profileStore = profileStore;   // テスト用
 
   let toastTimer = null;
   function toast(msg) {
@@ -102,7 +213,10 @@
       $("#qr-caption").hidden = false;
       setQRButtons(true);
     } catch (e) {
-      errEl.textContent = e.message;
+      // QR生成はサーバー機能。未接続時はプロファイル保存は可能な旨を案内。
+      errEl.textContent = (backendAvailable === false)
+        ? "QRコードの生成にはサーバー接続が必要です（この端末ではプロファイル保存のみ利用できます）"
+        : e.message;
       errEl.hidden = false;
     }
   }, 250);
@@ -140,20 +254,14 @@
       };
       try {
         if (editingProfile) {
-          await api("api/profiles/" + editingProfile.id, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
+          await profileStore.update(editingProfile.id, payload);
           toast("プロファイルを更新しました");
           cancelEdit();
         } else {
-          await api("api/profiles", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          toast("プロファイルに保存しました");
+          await profileStore.add(payload);
+          toast(profileStore.usingLocal()
+            ? "この端末に保存しました"
+            : "プロファイルに保存しました");
         }
         loadProfiles();
       } catch (e) {
@@ -266,7 +374,7 @@
     const list = $("#profile-list");
     const empty = $("#profiles-empty");
     try {
-      const items = await api("api/profiles");
+      const items = await profileStore.list();
       list.innerHTML = "";
       if (!items.length) {
         empty.hidden = false;
@@ -275,7 +383,6 @@
       empty.hidden = true;
       items.forEach((p) => list.appendChild(renderProfile(p)));
     } catch (e) {
-      // 起動時の自動読み込み。バックエンド未接続（静的配信）でも静かに無視。
       console.warn("プロファイル読み込み不可:", e.message);
     }
   }
@@ -358,7 +465,7 @@
   async function deleteProfile(p) {
     if (!confirm("「" + p.name + "」を削除しますか？")) return;
     try {
-      await api("api/profiles/" + p.id, { method: "DELETE" });
+      await profileStore.remove(p.id);
       if (editingProfile && editingProfile.id === p.id) cancelEdit();
       toast("削除しました");
       loadProfiles();
@@ -373,7 +480,7 @@
     // バックアップ書き出し（JSONファイル）
     $("#export-profiles").addEventListener("click", async () => {
       try {
-        const items = await api("api/profiles");
+        const items = await profileStore.list();
         if (!items.length) { toast("書き出すプロファイルがありません"); return; }
         const data = { app: "ouchi-net-hub", version: 1, profiles: items };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -398,11 +505,7 @@
         const text = await file.text();
         const data = JSON.parse(text);
         const profiles = Array.isArray(data) ? data : data.profiles;
-        const r = await api("api/profiles/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ profiles: profiles }),
-        });
+        const r = await profileStore.importMany(profiles);
         toast(r.imported + "件のプロファイルを読み込みました");
         loadProfiles();
       } catch (err) {
@@ -806,7 +909,7 @@
   }
 
   // ---- 初期化 -------------------------------------------------------
-  document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", async () => {
     initTheme();
     initNetStatus();
     initTabs();
@@ -818,6 +921,8 @@
     initHistory();
     initDiagnose();
     initUsage();
+    // バックエンドの有無を先に判定してからプロファイルを読み込む
+    await detectBackend();
     loadProfiles();
     loadHistory();
   });

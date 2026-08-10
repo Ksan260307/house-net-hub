@@ -167,6 +167,45 @@ def test_profiles_import_ui(page, live_server, tmp_path):
     assert any("ImportedNet" in n for n in names)
 
 
+def test_profile_save_offline_fallback(page, live_server):
+    """バックエンド未接続（PWA/静的配信/サーバー未到達）でもプロファイルを
+    localStorage に保存できる（iPadで発生した「エラーが発生しました」の修正）。"""
+    # /api/* を全てブロックしてサーバー無しを再現
+    page.route("**/api/**", lambda route: route.abort())
+    page.goto(live_server)
+    # バックエンド無しと判定されるのを待つ
+    page.wait_for_function(
+        "() => window.__profileStore && window.__profileStore.usingLocal() === true",
+        timeout=5000,
+    )
+    page.fill("#ssid", "OfflineNet")
+    page.fill("#password", "pw12345678")
+    page.click("#save-profile-btn")
+    page.wait_for_selector("#toast.show", timeout=3000)
+    # 汎用エラーではなく「この端末に保存」と出る
+    assert "この端末に保存" in page.locator("#toast").inner_text()
+    # 一覧に表示され、localStorage に1件保存されている
+    page.click('.tab[data-tab="profiles"]')
+    page.wait_for_selector(".profile-item", timeout=3000)
+    assert any("OfflineNet" in n for n in page.locator(".profile-name").all_inner_texts())
+    assert page.evaluate(
+        "() => JSON.parse(localStorage.getItem('ouchi.profiles.v1') || '[]').length") == 1
+
+
+def test_qr_shows_offline_guidance(page, live_server):
+    """バックエンド未接続時、QRは生成できない旨を分かりやすく案内する。"""
+    page.route("**/api/**", lambda route: route.abort())
+    page.goto(live_server)
+    page.wait_for_function(
+        "() => window.__profileStore && window.__profileStore.usingLocal() === true",
+        timeout=5000,
+    )
+    page.fill("#ssid", "X")
+    page.fill("#password", "pw12345678")
+    page.wait_for_selector("#wifi-error:not([hidden])", timeout=3000)
+    assert "サーバー接続が必要" in page.locator("#wifi-error").inner_text()
+
+
 def test_password_strength_meter(page, live_server):
     page.goto(live_server)
     page.click('.tab[data-tab="password"]')

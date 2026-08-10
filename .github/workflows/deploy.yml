@@ -25,6 +25,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Pagesの有効化を確認・初期化する（未設定ならここで分かりやすく失敗する）
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
