@@ -9,10 +9,12 @@
      （インストール済みPWAが古いコードのまま固まる問題を防ぐ）。
    - 画像/アイコンは「キャッシュ優先」（変化が少なく高速）。
    - /api/ はキャッシュしない（動的データ）。 */
-const CACHE = "ouchi-hub-v2";
+const CACHE = "ouchi-hub-v3";
 const ASSETS = [
   "./",
   "static/css/styles.css",
+  "static/js/vendor/qrcode.js",
+  "static/js/compute.js",
   "static/js/app.js",
   "static/js/kids.js",
   "manifest.webmanifest",

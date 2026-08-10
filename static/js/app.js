@@ -189,7 +189,7 @@
       .forEach((id) => { $("#" + id).disabled = !enabled; });
   }
 
-  const updateQR = debounce(async function () {
+  const updateQR = debounce(function () {
     const input = currentWifiInput();
     const errEl = $("#wifi-error");
     errEl.hidden = true;
@@ -202,21 +202,15 @@
       return;
     }
     try {
-      const result = await api("api/qr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
+      // QRはクライアント側で生成（サーバー不要・オフライン対応）
+      const result = Compute.wifiQrSvg(input.ssid, input.password, input.security, input.hidden);
       lastQR = Object.assign({}, input, result);
       $("#qr-stage").innerHTML = result.svg;
       $("#qr-ssid-label").textContent = input.ssid;
       $("#qr-caption").hidden = false;
       setQRButtons(true);
     } catch (e) {
-      // QR生成はサーバー機能。未接続時はプロファイル保存は可能な旨を案内。
-      errEl.textContent = (backendAvailable === false)
-        ? "QRコードの生成にはサーバー接続が必要です（この端末ではプロファイル保存のみ利用できます）"
-        : e.message;
+      errEl.textContent = e.message;
       errEl.hidden = false;
     }
   }, 250);
@@ -444,18 +438,9 @@
     return li;
   }
 
-  async function showProfileGuest(p) {
+  function showProfileGuest(p) {
     try {
-      const result = await api("api/qr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ssid: p.ssid,
-          password: p.password,
-          security: p.security,
-          hidden: p.hidden,
-        }),
-      });
+      const result = Compute.wifiQrSvg(p.ssid, p.password, p.security, p.hidden);
       openGuest(Object.assign({}, p, result));
     } catch (e) {
       toast(e.message);
@@ -524,25 +509,18 @@
       $("#feedback-list").innerHTML = "";
       return;
     }
-    try {
-      const r = await api("api/password/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: val }),
-      });
-      bar.className = "meter-bar s" + r.score;
-      $("#meter-label").textContent = r.label;
-      $("#meter-entropy").textContent = "約 " + r.entropy_bits + " bit";
-      const ul = $("#feedback-list");
-      ul.innerHTML = "";
-      (r.feedback || []).forEach((f) => {
-        const li = document.createElement("li");
-        li.textContent = f;
-        ul.appendChild(li);
-      });
-    } catch (e) {
-      toast(e.message);
-    }
+    // 強度診断はクライアント側で完結（サーバー不要・入力はローカルのみ）
+    const r = Compute.passwordStrength(val);
+    bar.className = "meter-bar s" + r.score;
+    $("#meter-label").textContent = r.label;
+    $("#meter-entropy").textContent = "約 " + r.entropy_bits + " bit";
+    const ul = $("#feedback-list");
+    ul.innerHTML = "";
+    (r.feedback || []).forEach((f) => {
+      const li = document.createElement("li");
+      li.textContent = f;
+      ul.appendChild(li);
+    });
   }, 200);
 
   function initPassword() {
@@ -568,23 +546,23 @@
       });
     });
 
-    $("#gen-btn").addEventListener("click", async () => {
-      let params;
-      if (currentMode() === "phrase") {
-        params = new URLSearchParams({ mode: "phrase", words: $("#phrase-words").value });
-      } else {
-        params = new URLSearchParams({
-          length: $("#gen-length").value,
-          upper: $("#opt-upper").checked,
-          lower: $("#opt-lower").checked,
-          digits: $("#opt-digits").checked,
-          symbols: $("#opt-symbols").checked,
-          avoid_ambiguous: $("#opt-ambig").checked,
-        });
-      }
+    $("#gen-btn").addEventListener("click", () => {
       try {
-        const r = await api("api/password/generate?" + params.toString());
-        $("#gen-output").textContent = r.password;
+        // 生成もクライアント側（暗号学的乱数 crypto.getRandomValues 使用）
+        let password;
+        if (currentMode() === "phrase") {
+          password = Compute.generatePassphrase($("#phrase-words").value);
+        } else {
+          password = Compute.generatePassword({
+            length: $("#gen-length").value,
+            upper: $("#opt-upper").checked,
+            lower: $("#opt-lower").checked,
+            digits: $("#opt-digits").checked,
+            symbols: $("#opt-symbols").checked,
+            avoid_ambiguous: $("#opt-ambig").checked,
+          });
+        }
+        $("#gen-output").textContent = password;
         $("#gen-result").hidden = false;
       } catch (e) {
         toast(e.message);
@@ -651,6 +629,12 @@
     $("#speed-btn").addEventListener("click", async () => {
       const btn = $("#speed-btn");
       const valEl = $("#speed-value");
+      // 速度テストはサーバーとの通信が必須（オフライン/未接続では実行不可）
+      if (backendAvailable === false || !navigator.onLine) {
+        $("#speed-note").textContent =
+          "速度テストにはサーバー接続が必要です（オフラインでは実行できません）。";
+        return;
+      }
       btn.disabled = true;
       valEl.textContent = "…";
       valEl.classList.add("speed-value--running");
@@ -829,7 +813,7 @@
   }
 
   // ---- データ使用量シミュレーター -----------------------------------
-  const calcUsage = debounce(async function () {
+  const calcUsage = debounce(function () {
     const activities = {};
     $$("#usage-inputs .usage-row").forEach((row) => {
       const v = parseFloat(row.querySelector("input").value);
@@ -837,11 +821,8 @@
     });
     const days = parseInt($("#usage-days").value, 10);
     try {
-      const r = await api("api/data-usage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ activities: activities, days: days }),
-      });
+      // 試算はクライアント側で完結（サーバー不要）
+      const r = Compute.estimateDataUsage(activities, days);
       $("#usage-month").textContent = r.per_month_gb;
       $("#usage-day").textContent = r.per_day_gb;
       const labels = {

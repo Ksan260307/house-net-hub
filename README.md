@@ -52,20 +52,34 @@ QRコードを表示します。くすみカラーの落ち着いたデザイン
 1. GitHub Actions で GitHub Pages に公開（下記）
 2. iPad の **Safari** で公開URLを開く
 3. 共有ボタン →「**ホーム画面に追加**」
-4. ホーム画面のアイコンから、全画面のアプリとして起動（おえかき3D等はオフラインでも動作）
+4. ホーム画面のアイコンから、全画面のアプリとして起動
 
 **方法B（家庭内サーバーから）**
 `python run.py` で起動したPCのLAN内URLを iPad Safari で開き、同様に「ホーム画面に追加」。
-QRコード・プロファイル・速度テストなどサーバー機能もすべて利用できます。
 
 > ℹ️ App Store 配布のネイティブアプリ化には Mac / Xcode / Apple Developer 登録が必要で、汎用の GitHub Actions だけでは作成できません。**iPadへ「アプリとして」入れる実用的な方法がこの PWA インストール**です。
+
+### 📴 オフライン対応（サーバー不要で動く機能）
+
+主要機能は**クライアント側で完結**し、GitHub Pages配信でも／完全オフラインでも動作します。
+
+| 機能 | オフライン | 実装 |
+|------|:---:|------|
+| WiFi QRコード生成 | ✅ | 純JS QRライブラリ（qrcode-generator, MIT）＋自前SVG化。日本語SSID・記号も正しくスキャン可能（cv2デコードで検証済み） |
+| プロファイル保存/編集/削除/書出/読込 | ✅ | サーバーがあれば暗号化バックエンド、無ければブラウザ(localStorage)へ自動フォールバック |
+| パスワード強度診断・生成（ことばフレーズ含む） | ✅ | クライアント側で計算（乱数は `crypto.getRandomValues`） |
+| データ使用量シミュレーター | ✅ | クライアント側で計算 |
+| おえかき3D | ✅ | もともとクライアント完結 |
+| 通信速度テスト | ⚠️ | サーバーとの通信が必須。オフライン時は案内を表示 |
+
+外部通信は一切行わず、CSP `default-src 'self'` のまま動作します。
 
 ### 🚀 GitHub Actions で公開（yml実行）
 
 - [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) … 静的PWAを **GitHub Pages** に公開（`main` へのpush、または手動実行）。リポジトリの **Settings → Pages → Source = GitHub Actions** で有効化。
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml) … フロント・バック両方のテストを実行。
 
-> Pages（静的配信）では WiFi QR / プロファイル / 速度テスト等のサーバー機能は動作しません（おえかき3D などクライアント機能はフル動作）。全機能は方法B（Flaskサーバー）でご利用ください。
+> Pages（静的配信）では上表の✅機能はフル動作します。速度テストのみサーバー（方法B）が必要です。
 
 ### 🔒 セキュリティ
 
@@ -94,6 +108,8 @@ QRコード・プロファイル・速度テストなどサーバー機能もす
 │  ├─ sw.js                 Service Worker（オフライン対応）
 │  ├─ css/styles.css      くすみカラーのスタイル
 │  ├─ js/app.js           フロントエンド制御
+│  ├─ js/compute.js       クライアント側計算（QR/パスワード/試算・オフライン用）
+│  ├─ js/vendor/qrcode.js QR生成ライブラリ（qrcode-generator, MIT）
 │  ├─ js/kids.js          おえかき3D（アイソメトリック街づくり）
 │  └─ icons/              PWA アイコン（tools/make_icons.py で生成）
 ├─ tools/make_icons.py     アイコン生成スクリプト

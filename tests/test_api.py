@@ -18,6 +18,20 @@ def test_static_css_served(client):
     assert r.status_code == 200
 
 
+def test_client_compute_assets_served(client):
+    # オフライン動作に必要なクライアント側資産が配信されている
+    for path in ("/static/js/vendor/qrcode.js", "/static/js/compute.js"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert "javascript" in r.headers.get("Content-Type", "")
+
+
+def test_index_references_client_compute(client):
+    html = client.get("/").data.decode("utf-8")
+    assert "static/js/vendor/qrcode.js" in html
+    assert "static/js/compute.js" in html
+
+
 # ---- PWA -------------------------------------------------------------
 def test_manifest_served(client):
     r = client.get("/manifest.webmanifest")

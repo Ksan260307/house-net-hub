@@ -192,18 +192,65 @@ def test_profile_save_offline_fallback(page, live_server):
         "() => JSON.parse(localStorage.getItem('ouchi.profiles.v1') || '[]').length") == 1
 
 
-def test_qr_shows_offline_guidance(page, live_server):
-    """バックエンド未接続時、QRは生成できない旨を分かりやすく案内する。"""
+def test_qr_works_offline(page, live_server):
+    """バックエンド未接続（オフライン/PWA/静的配信）でもQRを生成できる。"""
     page.route("**/api/**", lambda route: route.abort())
     page.goto(live_server)
     page.wait_for_function(
         "() => window.__profileStore && window.__profileStore.usingLocal() === true",
         timeout=5000,
     )
-    page.fill("#ssid", "X")
-    page.fill("#password", "pw12345678")
-    page.wait_for_selector("#wifi-error:not([hidden])", timeout=3000)
-    assert "サーバー接続が必要" in page.locator("#wifi-error").inner_text()
+    page.fill("#ssid", "OfflineWifi")
+    page.fill("#password", "welcome12345")
+    # サーバー無しでもクライアント側でQRが描画される
+    page.wait_for_selector("#qr-stage svg.qr-svg", timeout=5000)
+    assert page.locator("#qr-stage svg").count() == 1
+    assert page.is_enabled("#download-png-btn")
+
+
+def test_password_works_offline(page, live_server):
+    """パスワード診断・生成がサーバー無しで動作する。"""
+    page.route("**/api/**", lambda route: route.abort())
+    page.goto(live_server)
+    page.click('.tab[data-tab="password"]')
+    page.fill("#analyze-input", "G7!kQ9#vLm2$xZ4w")
+    page.wait_for_selector("#meter-bar.s4", timeout=3000)
+    assert page.locator("#meter-label").inner_text() == "とても強い"
+    page.click("#gen-btn")
+    page.wait_for_selector("#gen-result:not([hidden])", timeout=3000)
+    assert len(page.locator("#gen-output").inner_text()) == 16
+    # ことばフレーズもオフラインで生成できる
+    page.check('input[name="gen-mode"][value="phrase"]')
+    page.click("#gen-btn")
+    page.wait_for_function(
+        "() => document.querySelector('#gen-output').textContent.split('-').length === 4",
+        timeout=3000,
+    )
+
+
+def test_data_usage_works_offline(page, live_server):
+    """データ試算がサーバー無しで動作する。"""
+    page.route("**/api/**", lambda route: route.abort())
+    page.goto(live_server)
+    page.click('.tab[data-tab="usage"]')
+    page.wait_for_function(
+        "() => { const v = document.querySelector('#usage-month').textContent;"
+        " return v && v !== '--' && parseFloat(v) > 0; }",
+        timeout=3000,
+    )
+
+
+def test_speed_test_offline_message(page, live_server):
+    """速度テストはサーバー必須。オフラインでは案内を出す。"""
+    page.route("**/api/**", lambda route: route.abort())
+    page.goto(live_server)
+    page.wait_for_function(
+        "() => window.__profileStore && window.__profileStore.usingLocal() === true",
+        timeout=5000,
+    )
+    page.click('.tab[data-tab="speed"]')
+    page.click("#speed-btn")
+    assert "サーバー接続が必要" in page.locator("#speed-note").inner_text()
 
 
 def test_password_strength_meter(page, live_server):
